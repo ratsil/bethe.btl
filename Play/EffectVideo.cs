@@ -8,6 +8,8 @@ using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using helpers;
 using helpers.extensions;
+using System.Xml;
+using helpers.extensions;
 
 namespace BTL.Play
 {
@@ -16,11 +18,27 @@ namespace BTL.Play
 		public event EventDelegate FrameMaking;
 		virtual public Area stArea { get; set; }
         virtual public bool bOpacity { get; set; }
-		virtual public bool bCUDA { get; set; }
-        virtual public IVideo iMask { get; set; }
+        virtual public MergingMethod stMergingMethod { get; set; }
+        virtual public IVideo iMask
+		{
+			get
+			{
+				return _iMask;
+			}
+			set
+			{
+                _iMask = value;
+                if (null == _iMask.cMask)
+                    _iMask.cMask = new Mask() { eMaskType = DisCom.Alpha.mask };
+			}
+		}
+		virtual public Play.Mask cMask { get; set; }
 		virtual public byte nInDissolve { get; set; }
 		virtual public byte nOutDissolve { get; set; }
 		virtual public byte nMaxOpacity { get; set; }
+        virtual public byte nPixelsMapSyncIndex { get; set; }
+        private IVideo _iMask;
+		public Area stBase { get; set; }
 		private Dock _cDock;
         public Dock cDock
 		{
@@ -28,21 +46,20 @@ namespace BTL.Play
 			{
 				(new Logger()).WriteDebug4("in");
 				_cDock = value;
-				if (stArea.nLeft == 0 && stArea.nTop == 0)
-					stArea = stArea.Dock(Baetylus.Helper.cBaetylus.cBoard.stArea, value);
+				stArea = stArea.Dock(stBase, value);
 			}
 			get
 			{
 				return _cDock;
 			}
 		}
-		protected byte nCurrentOpacity //EMERGENCY:l ээээ... а почему у нас дизолв тока на тексте? я думал ты сделал по человечески... чтобы дизолв мог быть на любом эффекте - идём в ту сторону...
+		internal byte nCurrentOpacity
 		{
 			get
 			{
-				if (nFrameCurrent <= nInDissolve)
+				if (1 < nInDissolve && nFrameCurrent <= nInDissolve)
 					return ((float)(nFrameCurrent) * nMaxOpacity / nInDissolve).ToByte();
-				if (nDuration + 1 - nFrameCurrent <= nOutDissolve)
+				if (1 < nOutDissolve && nDuration + 1 - nFrameCurrent <= nOutDissolve)
 					return ((float)(nDuration + 1 - nFrameCurrent) * nMaxOpacity / nOutDissolve).ToByte();
 				return nMaxOpacity;
 			}
@@ -52,20 +69,50 @@ namespace BTL.Play
 		{
 			try
 			{
-				bCUDA = Preferences.bCUDA;
+                stMergingMethod = Preferences.stMerging;
+                stBase = Baetylus.Helper.stCurrentBTLArea;
 				nFrameCurrent = 0;
 				stArea = new Area(0, 0, 0, 0);
 				nMaxOpacity = 255;
 				nInDissolve = 0;
 				nOutDissolve = 0;
-			}
+                nPixelsMapSyncIndex = byte.MaxValue;
+            }
 			catch
 			{
 				Fail();
 				throw;
 			}
 		}
-        ~EffectVideo()
+		new internal void LoadXML(XmlNode cXmlNode)
+		{
+			base.LoadXML(cXmlNode);
+
+            if (null != cXmlNode.AttributeValueGet("cuda", false) || null != cXmlNode.AttributeValueGet("merging", false))
+                stMergingMethod = new MergingMethod(cXmlNode);
+            else
+                stMergingMethod = iContainer == null || iContainer.stMergingMethod == null ? Preferences.stMerging : iContainer.stMergingMethod.Value;
+
+            nInDissolve = cXmlNode.AttributeOrDefaultGet<byte>("in_dissolve", 0);
+			nOutDissolve = cXmlNode.AttributeOrDefaultGet<byte>("out_dissolve", 0);
+			nMaxOpacity = cXmlNode.AttributeOrDefaultGet<byte>("max_opacity", 255);
+
+			bOpacity = cXmlNode.AttributeOrDefaultGet<bool>("opacity", false);
+            cMask = Play.Mask.MaskLoad(cXmlNode);
+
+            XmlNode cNodeChild;
+            if (null == cMask && null != (cNodeChild = cXmlNode.NodeGet("mask", false)))
+            {
+                this.iMask = (IVideo)EffectGet(cNodeChild.ChildNodes[0]);
+            }
+
+            stArea = stArea.LoadXML(cXmlNode);
+			Dock cDockTMP = new Dock();
+			cDockTMP.LoadXML(cXmlNode);
+			cDock = cDockTMP;
+		}
+
+		~EffectVideo()
         {
         }
 
@@ -103,15 +150,15 @@ namespace BTL.Play
                 this.bOpacity = value;
             }
         }
-        bool IVideo.bCUDA
+        MergingMethod IVideo.stMergingMethod
         {
             get
             {
-                return this.bCUDA;
+                return this.stMergingMethod;
             }
             set
             {
-                this.bCUDA = value;
+                this.stMergingMethod = value;
             }
         }
         IVideo IVideo.iMask
@@ -125,7 +172,19 @@ namespace BTL.Play
                 this.iMask = value;
             }
         }
-		byte IVideo.nInDissolve 
+        Mask IVideo.cMask
+        {
+            get
+            {
+                return this.cMask;
+            }
+            set
+            {
+                this.cMask = value;
+            }
+        }
+
+        byte IVideo.nInDissolve 
 		{
 			get
 			{
@@ -158,6 +217,17 @@ namespace BTL.Play
 				this.nMaxOpacity = value;
 			}
 		}
+        byte IVideo.nPixelsMapSyncIndex
+        {
+            get
+            {
+                return this.nPixelsMapSyncIndex;
+            }
+            set
+            {
+                this.nPixelsMapSyncIndex = value;
+            }
+        }
         PixelsMap IVideo.FrameNext()
         {
             return this.FrameNext();
@@ -177,6 +247,17 @@ namespace BTL.Play
 			}
 			return cOffset;
 		}
+		Area IVideo.stBase
+		{
+			get
+			{
+				return this.stBase;
+			}
+			set
+			{
+				this.stBase = value;
+			}
+		}
 		#endregion
 
 		virtual public PixelsMap FrameNext()
@@ -193,6 +274,19 @@ namespace BTL.Play
 			{
 				this.Stop();
 			}
+        }
+    }
+    public class Mask
+    {
+        public DisCom.Alpha eMaskType;
+        //public string sTargetEffectName;  // не реализовано. то же что и imask по сути, но можно много масок вешать и с кейфреймами и т.д.
+        static public Mask MaskLoad(XmlNode cXmlNode)
+        {
+            if (null == cXmlNode.AttributeValueGet("mask_type", false))
+                return null;
+            Mask cRetVal = new Mask();
+            cRetVal.eMaskType = cXmlNode.AttributeGet<DisCom.Alpha>("mask_type");
+            return cRetVal;
         }
     }
 }

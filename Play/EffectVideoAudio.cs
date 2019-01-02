@@ -5,6 +5,7 @@ using System.Text;
 using helpers.extensions;
 
 using helpers;
+using System.Xml;
 
 namespace BTL.Play
 {
@@ -82,11 +83,45 @@ namespace BTL.Play
             }
             set
             {
-                (new Logger()).WriteDebug3("effect:va:area:set:in");
                 _cEffectVideo.stArea = value;
-                (new Logger()).WriteDebug4("effect:va:area:set:out");
             }
         }
+		public Area stBase
+		{
+			get
+			{
+				return _cEffectVideo.stBase;
+			}
+			set
+			{
+				_cEffectVideo.stBase = value;
+			}
+		}
+		public Dock cDock
+		{
+			get
+			{
+				return _cEffectVideo.cDock;
+			}
+			set
+			{
+				_cEffectVideo.cDock = value;
+			}
+		}
+		protected byte nCurrentOpacity
+		{
+			get
+			{
+				return _cEffectVideo.nCurrentOpacity;
+			}
+		}
+		protected float nCurrentLevel
+		{
+			get
+			{
+				return _cEffectAudio.nCurrentLevel;
+			}
+		}
 		public byte[] aChannelsAudio
         {
             get
@@ -138,6 +173,57 @@ namespace BTL.Play
 				return (nFrameCurrentVideo > nFrameCurrentAudio ? nFrameCurrentVideo : nFrameCurrentAudio);
             }
         }
+		public byte nInDissolve
+		{
+			get
+			{
+				return _cEffectVideo.nInDissolve;
+			}
+			set
+			{
+				_cEffectVideo.nInDissolve = value;
+				_cEffectAudio.nInFade = value;
+			}
+		}
+
+		public byte nOutDissolve
+		{
+			get
+			{
+				return _cEffectVideo.nOutDissolve;
+			}
+			set
+			{
+				_cEffectVideo.nOutDissolve = value;
+				_cEffectAudio.nOutFade = value;
+			}
+		}
+		public byte nInFade
+		{
+			get
+			{
+				return _cEffectAudio.nInFade;
+			}
+		}
+		public byte nOutFade
+		{
+			get
+			{
+				return _cEffectAudio.nOutFade;
+			}
+		}
+        public virtual byte nPixelsMapSyncIndex
+        {
+            get
+            {
+                return _cEffectVideo.nPixelsMapSyncIndex;
+            }
+            set
+            {
+                _cEffectVideo.nPixelsMapSyncIndex = value;
+            }
+        }
+
         virtual public ulong nFrameCurrentVideo
         {
             get
@@ -176,15 +262,15 @@ namespace BTL.Play
                 _cEffectVideo.bOpacity = value;
             }
         }
-        virtual public bool bCUDA
+        virtual public MergingMethod stMergingMethod
         {
             get
             {
-                return _cEffectVideo.bCUDA;
+                return _cEffectVideo.stMergingMethod;
             }
             set
             {
-                _cEffectVideo.bCUDA = value;
+                _cEffectVideo.stMergingMethod = value;
             }
         }
         virtual public IVideo iMask
@@ -196,6 +282,17 @@ namespace BTL.Play
             set
             {
                 _cEffectVideo.iMask = value;
+            }
+        }
+        virtual public Play.Mask cMask
+        {
+            get
+            {
+                return _cEffectVideo.cMask;
+            }
+            set
+            {
+                _cEffectVideo.cMask = value;
             }
         }
 		byte IVideo.nInDissolve
@@ -231,6 +328,17 @@ namespace BTL.Play
 				_cEffectVideo.nMaxOpacity = value;
 			}
 		}
+        byte IVideo.nPixelsMapSyncIndex
+        {
+            get
+            {
+                return _cEffectVideo.nPixelsMapSyncIndex;
+            }
+            set
+            {
+                _cEffectVideo.nPixelsMapSyncIndex = value;
+            }
+        }
         internal EffectVideoAudio(EffectType eType)
             : base(eType)
         {
@@ -249,8 +357,15 @@ namespace BTL.Play
         {
         }
 
+		new internal void LoadXML(XmlNode cXmlNode)
+		{
+			base.LoadXML(cXmlNode);
+			_cEffectVideo.LoadXML(cXmlNode);
+			_cEffectAudio.LoadXMLChannels(cXmlNode);
+		}
+
         #region IVideo
-		event EventDelegate IVideo.FrameMaking
+        event EventDelegate IVideo.FrameMaking
 		{
 			add
 			{
@@ -294,8 +409,18 @@ namespace BTL.Play
                 this.iMask = value;
             }
         }
-
-        PixelsMap IVideo.FrameNext()
+        Play.Mask IVideo.cMask
+        {
+            get
+            {
+                return this.cMask;
+            }
+            set
+            {
+                this.cMask = value;
+            }
+        }
+		PixelsMap IVideo.FrameNext()
         {
             return this.FrameNextVideo();
         }
@@ -314,8 +439,19 @@ namespace BTL.Play
 			}
 			return cOffset;
 		}
+        Area IVideo.stBase
+		{
+			get
+			{
+				return this.stBase;
+			}
+			set
+			{
+				this.stBase = value;
+			}
+		}
 		#endregion
-        #region IAudio
+		#region IAudio
 		byte[] IAudio.aChannels
         {
             get
@@ -327,8 +463,28 @@ namespace BTL.Play
                 this.aChannelsAudio = value;
             }
         }
+		byte IAudio.nInFade
+		{
+			get
+			{
+				return this.nInFade;
+			}
+			set
+			{
+			}
+		}
+		byte IAudio.nOutFade
+		{
+			get
+			{
+				return this.nOutFade;
+			}
+			set
+			{
+			}
+		}
 
-        byte[] IAudio.FrameNext()
+		Bytes IAudio.FrameNext()
         {
             return this.FrameNextAudio();
         }
@@ -346,7 +502,7 @@ namespace BTL.Play
             if (null != _cEffectAudio)
                 _cEffectAudio.Dispose();
             base.Dispose();
-			cTimings.Stop("dispose >20ms [" + GetHashCode() + "]", 20);
+			cTimings.Stop("dispose >20ms [" + nID + "]", 20);
 		}
         override public void Prepare()
         {
@@ -402,7 +558,7 @@ namespace BTL.Play
 			if (null != _cEffectAudio)
 				_cEffectAudio.Skip();
 		}
-		virtual public byte[] FrameNextAudio()
+		virtual public Bytes FrameNextAudio()
         {
             return (null == _cEffectAudio? null : _cEffectAudio.FrameNext());
         }

@@ -24,8 +24,9 @@ namespace BTL
 
         ushort nEffectsQty { get; }
 		ulong nSumDuration { get; }
-		
-		void EffectsProcess(Dictionary<IEffect, ContainerAction> ahMoveInfos); //возвращает порядковый номер этой работы чтобы узнать потом, что она сделана //EMERGENCY что-то я не вкурил в этот комментарий
+        MergingMethod? stMergingMethod { get; }
+
+		void EffectsProcess(Dictionary<IEffect, ContainerAction> ahMoveInfos);
 		void EffectsReorder();
     }
 }

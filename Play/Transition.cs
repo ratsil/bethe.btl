@@ -1,4 +1,4 @@
-using System;
+п»їusing System;
 using System.Collections.Generic;
 using System.Text;
 using System.Drawing.Drawing2D;
@@ -34,7 +34,8 @@ namespace BTL.Play
         public TypeVideo eTransitionTypeVideo { get; set; }
         public TypeAudio eTransitionTypeAudio { get; set; }
         private PixelsMap _cPixelsMap;
-		override public ulong nFrameCurrentVideo
+        private PixelsMap.Triple _cPMDuo;
+        override public ulong nFrameCurrentVideo
 		{
 			get
 			{
@@ -74,7 +75,7 @@ namespace BTL.Play
         {
 			try
             {
-                if (null == cEffectSource) // TODO проверять видео или только аудио.....
+                if (null == cEffectSource) // TODO РїСЂРѕРІРµСЂСЏС‚СЊ РІРёРґРµРѕ РёР»Рё С‚РѕР»СЊРєРѕ Р°СѓРґРёРѕ.....
                     _cEffectSource = new Composite(1, 1);
                 else
                     _cEffectSource = cEffectSource;
@@ -98,24 +99,25 @@ namespace BTL.Play
 
         ~Transition()
         {
-            try
-            {
-                if (null != _cPixelsMap)
-                    _cPixelsMap.Dispose(true);
+			try
+			{
+                Baetylus.PixelsMapDispose(_cPMDuo, true);
             }
 			catch (Exception ex)
 			{
 				(new Logger()).WriteError(ex);
 			}
-        }
+		}
 
-        override public void Prepare()
+		override public void Prepare()
         {
 			base.Prepare();
             if (0 == nDuration)
                 nDuration = 1;
 
 
+            if (stMergingMethod.eDeviceType == MergingDevice.DisCom)
+                PixelsMap.DisComInit();
 
 
 
@@ -128,19 +130,21 @@ namespace BTL.Play
             if (_cEffectSource is IVideo && _cEffectTarget is IVideo)
             {
                 stArea = SumOfAreas(((IVideo)_cEffectSource).stArea, ((IVideo)_cEffectTarget).stArea);
-                if (null != _cPixelsMap && stArea != _cPixelsMap.stArea)
+                if (null != _cPMDuo && stArea != _cPMDuo.cFirst.stArea)
                 {
-                    _cPixelsMap.Dispose(true);
-                    _cPixelsMap = null;
+                    Baetylus.PixelsMapDispose(_cPMDuo, true);
+                    _cPMDuo = null;
                 }
-                if (null == _cPixelsMap)
+                if (null == _cPMDuo)
                 {
-                    _cPixelsMap = new PixelsMap(bCUDA, stArea, PixelsMap.Format.ARGB32);
-                    _cPixelsMap.bKeepAlive = true;
-					if (1 > _cPixelsMap.nLength)
-						(new Logger()).WriteNotice("1 > _cPixelsMap.nLength. transition.prepare");
-					_cPixelsMap.Allocate();
+                    //_cPixelsMap = new PixelsMap(stMergingMethod, stArea, PixelsMap.Format.ARGB32);
+                    _cPMDuo = new PixelsMap.Triple(new MergingMethod(stMergingMethod.eDeviceType, 0), stArea, PixelsMap.Format.ARGB32, true, Baetylus.PixelsMapDispose);  //MergingDevice.DisCom
+                    if (1 > _cPMDuo.cFirst.nLength)
+                        (new Logger()).WriteNotice("1 > _cPixelsMap.nLength. transition.prepare");
+                    _cPMDuo.Allocate();
                 }
+                _cPMDuo.RenewFirstTime();
+                nPixelsMapSyncIndex = byte.MaxValue;
             }
         }
         override public void Idle()
@@ -235,41 +239,52 @@ namespace BTL.Play
             if (_cEffectSource is IVideo)
             {
                 iVideo = (IVideo)_cEffectSource;
+                iVideo.nPixelsMapSyncIndex = nPixelsMapSyncIndex;
                 if (null != (cFrame = iVideo.FrameNext()))
                 {
                     if (cFrame.nAlphaConstant<255)
                         bIfLayersHave255Alpha = false;
                     nAlphaConstantOld.Add(cFrame, cFrame.nAlphaConstant);
-					if(null != iVideo.iMask)
-                    {
-                        aFrames.Add(iVideo.iMask.FrameNext());
-                        aFrames[aFrames.Count - 1].eAlpha = DisCom.Alpha.mask;
-                    }
+					//if(null != iVideo.iMask)
+     //               {
+     //                   aFrames.Add(iVideo.iMask.FrameNext());
+     //                   aFrames[aFrames.Count - 1].eAlpha = DisCom.Alpha.mask;
+     //               }
                     aFrames.Add(TransitionVideoFrame(cFrame, eTransitionTypeVideo, nProgress));
                 }
             }
             if (_cEffectTarget is IVideo)
             {
-                if (0.5 == nProgress)  // избегаем коллизии ровной середины
+                if (0.5 == nProgress)  // РёР·Р±РµРіР°РµРј РєРѕР»Р»РёР·РёРё СЂРѕРІРЅРѕР№ СЃРµСЂРµРґРёРЅС‹
                     nProgress = 0.501F;
                 iVideo = (IVideo)_cEffectTarget;
+                iVideo.nPixelsMapSyncIndex = nPixelsMapSyncIndex;
                 if (null != (cFrame = iVideo.FrameNext()))
                 {
                     if (cFrame.nAlphaConstant<255)
                         bIfLayersHave255Alpha = false;
                     nAlphaConstantOld.Add(cFrame, cFrame.nAlphaConstant);
-                    if (null != iVideo.iMask)
-                    {
-                        aFrames.Add(iVideo.iMask.FrameNext());
-                        aFrames[aFrames.Count - 1].eAlpha = DisCom.Alpha.mask;
-                    }
+                    //if (null != iVideo.iMask)
+                    //{
+                    //    aFrames.Add(iVideo.iMask.FrameNext());
+                    //    aFrames[aFrames.Count - 1].eAlpha = DisCom.Alpha.mask;
+                    //}
                     aFrames.Add(TransitionVideoFrame(cFrame, eTransitionTypeVideo, 1 - nProgress));
                 }
             }
             if (2 == aFrames.Count && aFrames[0].stArea == aFrames[1].stArea && bIfLayersHave255Alpha)
                 aFrames[0].nAlphaConstant = byte.MaxValue;
-            PixelsMap cRetVal = PixelsMap.Merge(stArea, aFrames); //EMERGENCY:l тут мы, между прочим, для каждого кадра делаем пикселсмэп, а это очень неэффективно...
-            //_cPixelsMap.Merge(aFrames);
+
+            //PixelsMap cRetVal = PixelsMap.Merge(stArea, aFrames); 
+            //EMERGENCY:l С‚СѓС‚ РјС‹, РјРµР¶РґСѓ РїСЂРѕС‡РёРј, РґР»СЏ РєР°Р¶РґРѕРіРѕ РєР°РґСЂР° РґРµР»Р°РµРј РїРёРєСЃРµР»СЃРјСЌРї, Р° СЌС‚Рѕ РѕС‡РµРЅСЊ РЅРµСЌС„С„РµРєС‚РёРІРЅРѕ...
+            // Р РЅРµ РЅР°РґРѕ РѕС‚РїСЂР°РІР»СЏС‚СЊ РІ РјРµСЂРґР¶, РµСЃР»Рё СЌС„С„РµРєС‚ С‚РѕР»СЊРєРѕ РѕРґРёРЅ (СѓС…РѕРґ РІ С‡РµСЂРЅРѕРµ) - РїСЂРѕСЃС‚Рѕ РјРµРЅСЏРµРј РµРјСѓ РєРѕРЅСЃС‚ Р°Р»СЊС„Сѓ
+            PixelsMap cRetVal = _cPMDuo.Switch(nPixelsMapSyncIndex);
+            if (cRetVal == null) return null;
+
+            cRetVal.Merge(aFrames);
+
+            if (null != cRetVal && null != cMask)
+                cRetVal.eAlpha = cMask.eMaskType;
             foreach (PixelsMap cPM in aFrames)
             {
                 if (nAlphaConstantOld.ContainsKey(cPM))
@@ -286,7 +301,7 @@ namespace BTL.Play
 				Stop();
             return cRetVal;
         }
-		override public byte[] FrameNextAudio()
+		override public Bytes FrameNextAudio()
         {
 			if (!(_cEffectSource is IAudio) && !(_cEffectTarget is IAudio))
 				return null;
@@ -294,8 +309,8 @@ namespace BTL.Play
 				return null;
 
             _nFramesCounterAudio++;
-            List<byte[]> aAFrames = new List<byte[]>();
-            byte[] aAFrame;
+            List<Bytes> aAFrames = new List<Bytes>();
+            Bytes aAFrame;
             float nProgress = (float)_nFramesCounterAudio / (float)nDuration;
             if (_cEffectSource is IAudio)
             {
@@ -307,7 +322,7 @@ namespace BTL.Play
             }
             if (_cEffectTarget is IAudio)
             {
-                if (0.5 == nProgress)  // избегаем коллизии ровной середины
+                if (0.5 == nProgress)  // РёР·Р±РµРіР°РµРј РєРѕР»Р»РёР·РёРё СЂРѕРІРЅРѕР№ СЃРµСЂРµРґРёРЅС‹
                     nProgress = 0.501F;
 				if (_cEffectTarget.eStatus == EffectStatus.Running)
 				{
@@ -400,7 +415,7 @@ namespace BTL.Play
             }
             return cFrame;
         }
-        private byte[] TransitionAudioFrame(byte[] aAudioSamples, TypeAudio eTransitionType, float nProgress)
+        public static Bytes TransitionAudioFrame(Bytes aAudioSamples, TypeAudio eTransitionType, float nProgress)
         {
 			switch (eTransitionType)
             {
@@ -415,10 +430,10 @@ namespace BTL.Play
 						short nCoeff;
                         for (int nByteIndx = 0; nByteIndx < aAudioSamples.Length; nByteIndx += 2)
                         {
-                            nCoeff = (short)((aAudioSamples[nByteIndx + 1] << 8) + aAudioSamples[nByteIndx]);
+                            nCoeff = (short)((aAudioSamples.aBytes[nByteIndx + 1] << 8) + aAudioSamples.aBytes[nByteIndx]);
                             nCoeff = (short)(nCoeff * (1 - nProgress));
-                            aAudioSamples[nByteIndx] = (byte)nCoeff;
-                            aAudioSamples[nByteIndx + 1] = (byte)(nCoeff >> 8);
+                            aAudioSamples.aBytes[nByteIndx] = (byte)nCoeff;
+                            aAudioSamples.aBytes[nByteIndx + 1] = (byte)(nCoeff >> 8);
                         }
                         break;
                 default:
@@ -437,16 +452,16 @@ namespace BTL.Play
 			aRetVal.nHeight += a1.nTop <= 0 || a2.nTop <= 0 ? (ushort)0 : (ushort)Math.Min(a1.nTop, a2.nTop);
             return aRetVal;
         }
-        byte[] MergeAudioSamples(byte[] a1, byte[] a2)
+        Bytes MergeAudioSamples(Bytes a1, Bytes a2)
         {
             int nSampleRate = (int)Preferences.nAudioSamplesRate;
 			int nChannelsQty = 2; //Preferences.nAudioChannelsQty;
 			int nBytesPerChannel = Preferences.nAudioByteDepth;
 			int nFramesRate = Preferences.nFPS;
 			int nBytesQty = nSampleRate * nChannelsQty * nBytesPerChannel / nFramesRate;
-            byte[] aRetVal = new byte[nBytesQty];
-            // нужна проверка формата!!!!!!!!!!!!
-            // пока что считаем {16 бит 48000 герц стерео} = 7680 байт
+            Bytes aRetVal = Baetylus._cBinM.BytesGet(nBytesQty, 3);
+            // РЅСѓР¶РЅР° РїСЂРѕРІРµСЂРєР° С„РѕСЂРјР°С‚Р°!!!!!!!!!!!!
+            // РїРѕРєР° С‡С‚Рѕ СЃС‡РёС‚Р°РµРј {16 Р±РёС‚ 48000 РіРµСЂС† СЃС‚РµСЂРµРѕ} = 7680 Р±Р°Р№С‚
             if (null == a1 || nBytesQty != a1.Length)
             {
                 return a2;
@@ -459,16 +474,16 @@ namespace BTL.Play
             int tmp;
             for (int ii = 0; ii < nBytesQty; ii += 2)
             {
-                k1 = (short)((a1[ii + 1] << 8) + a1[ii]);
-                k2 = (short)((a2[ii + 1] << 8) + a2[ii]);
+                k1 = (short)((a1.aBytes[ii + 1] << 8) + a1.aBytes[ii]);
+                k2 = (short)((a2.aBytes[ii + 1] << 8) + a2.aBytes[ii]);
                 tmp = k1 + k2;
                 if (Int16.MaxValue < tmp) 
                     tmp = Int16.MaxValue;
                 else if (Int16.MinValue > tmp) 
                     tmp = Int16.MinValue;
                 rez = (short)tmp;
-                aRetVal[ii] = (byte)rez;
-                aRetVal[ii + 1] = (byte)(rez >> 8);
+                aRetVal.aBytes[ii] = (byte)rez;
+                aRetVal.aBytes[ii + 1] = (byte)(rez >> 8);
             }
             return aRetVal;
         }

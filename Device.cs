@@ -1,4 +1,4 @@
-using System;
+п»їusing System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -7,10 +7,10 @@ using DeckLinkAPI;
 using helpers;
 using System.Linq;
 
-// отладка
+// РѕС‚Р»Р°РґРєР°
 using System.Drawing;
-using System.Drawing.Imaging;           // отладка
-// отладка
+using System.Drawing.Imaging;           // РѕС‚Р»Р°РґРєР°
+// РѕС‚Р»Р°РґРєР°
 
 namespace BTL
 {
@@ -91,7 +91,7 @@ namespace BTL
 							if (0 < nRefTotal)
 							{
 								if (0 < Baetylus.nVideoBufferCount && DateTime.MaxValue > dtRefEnd)
-									(new Logger()).WriteNotice("there is freeze [" + nFreezeIndx + "] in the air!!!   __CONTINUE__  [nRefTotal=" + nRefTotal + "][_nReferences=" + _nReferences + "][new_value=" + value + "]"); // временно
+									(new Logger()).WriteNotice("there is freeze [" + nFreezeIndx + "] in the air!!!   __CONTINUE__  [nRefTotal=" + nRefTotal + "][_nReferences=" + _nReferences + "][new_value=" + value + "]"); // РІСЂРµРјРµРЅРЅРѕ
 								if (DateTime.MaxValue == dtRefEnd)
 								{
 									(new Logger()).WriteNotice("there is freeze [" + nFreezeIndx + "] in the air!!!   __BEGIN__  [nRefTotal=" + nRefTotal + "][_nReferences=" + _nReferences + "][new_value=" + value + "]");
@@ -266,7 +266,7 @@ namespace BTL
 		{
 			Frame.Video oRetVal;
 			oRetVal = FrameBufferPrepare();
-			if (_aConveyorTotal.Contains(oRetVal))    // проверить было ли вообще такое	
+			if (_aConveyorTotal.Contains(oRetVal))    // РїСЂРѕРІРµСЂРёС‚СЊ Р±С‹Р»Рѕ Р»Рё РІРѕРѕР±С‰Рµ С‚Р°РєРѕРµ	
 			{
 				do
 				{
@@ -314,10 +314,10 @@ namespace BTL
 			string sInfo = "video prepare:";//bug
 			lock (_aFrames)
 			{
-				if (3 > _aFrames.Count) // чтобы сохранять зазор в 2 кадра  //bug
+				if (3 > _aFrames.Count) // С‡С‚РѕР±С‹ СЃРѕС…СЂР°РЅСЏС‚СЊ Р·Р°Р·РѕСЂ РІ 2 РєР°РґСЂР°  //bug
 				{
 					AddNewFrameToConveyor("! from FrameBufferGet !"); 
-					(new Logger()).WriteNotice("размер конвейера был увеличен до " + nConvLength);
+					(new Logger()).WriteNotice("СЂР°Р·РјРµСЂ РєРѕРЅРІРµР№РµСЂР° Р±С‹Р» СѓРІРµР»РёС‡РµРЅ РґРѕ " + nConvLength);
 					sInfo += "conveier new:";
 				}
 				else
@@ -441,7 +441,7 @@ namespace BTL
 					(new Logger()).WriteDebug2("BYTES FROM BTL IS NULL 1 - repeat the last [id=" + _cFrameVideoLast.nID + "][ref=" + _cFrameVideoLast.nReferences + "]");
 				}
 				else if (cFrame.cVideo.oFrameBytes is byte[] && 1 > cFrame.cVideo.aFrameBytes.Length)
-					_cFrameVideoLast = _cVideoFrameEmpty; //получили признак необходимости очистить экран
+					_cFrameVideoLast = _cVideoFrameEmpty; //РїРѕР»СѓС‡РёР»Рё РїСЂРёР·РЅР°Рє РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё РѕС‡РёСЃС‚РёС‚СЊ СЌРєСЂР°РЅ
 				else
 					_cFrameVideoLast = cFrame.cVideo;
 
@@ -460,18 +460,18 @@ namespace BTL
 			{
 				_aq__PROBA__VideoFrames.Enqueue(_cFrameVideoLast);
 				_cFrameVideoLast.nReferences++;
-				// пока не разобрались с набегающим рассинхроном - теряем кадрик!
+				// РїРѕРєР° РЅРµ СЂР°Р·РѕР±СЂР°Р»РёСЃСЊ СЃ РЅР°Р±РµРіР°СЋС‰РёРј СЂР°СЃСЃРёРЅС…СЂРѕРЅРѕРј - С‚РµСЂСЏРµРј РєР°РґСЂРёРє!
 				(new Logger()).WriteDebug2("FRAME FROM BTL IS NULL 1 - repeat the last [id=" + _cFrameVideoLast.nID + "][ref=" + _cFrameVideoLast.nReferences + "]");
 			}
 
 
-			// пока не разобрались с набегающим рассинхроном - теряем кадрик!  
+			// РїРѕРєР° РЅРµ СЂР°Р·РѕР±СЂР°Р»РёСЃСЊ СЃ РЅР°Р±РµРіР°СЋС‰РёРј СЂР°СЃСЃРёРЅС…СЂРѕРЅРѕРј - С‚РµСЂСЏРµРј РєР°РґСЂРёРє!  
 			if (2 < _aq__PROBA__VideoFrames.Count)
 			{
 				if (250 < BalanceBeemTimeCounter)
 				{
 					Frame.Video cVF = _aq__PROBA__VideoFrames.Dequeue();
-					FrameBufferReleased(cVF); //  возврат в конвейер
+					FrameBufferReleased(cVF); //  РІРѕР·РІСЂР°С‚ РІ РєРѕРЅРІРµР№РµСЂ
 					(new Logger()).WriteWarning("BALANCE-BEEM. SYNC CORRECTED BY DROPPING __VIDEO__ FRAME! [video_frame_id=" + cVF.nID + "][ticks=" + DateTime.Now.Ticks + "]");
 				}
 				else if (0 == BalanceBeemTimeCounter)
@@ -492,7 +492,7 @@ namespace BTL
 			if (1 < _aq__PROBA__AudioFrames.Count - _aq__PROBA__VideoFrames.Count)
 			{
 				//_cFrameVideoLast.nReferences++;
-				//_aq__PROBA__VideoFrames.Enqueue(_cFrameVideoLast); //КАК Я И ГОВОРИЛ, БАГ ИМЕННО ИЗ-ЗА ЭТОЙ КОНСТРУКЦИИ =)) МЫ ОДИН И ТОТ ЖЕ НОРМАЛЬНЫЙ КАДР ХУЯЧИМ ДВА РАЗА ИЗ-ЗА ЭТОГО IF'А
+				//_aq__PROBA__VideoFrames.Enqueue(_cFrameVideoLast); //РљРђРљ РЇ Р Р“РћР’РћР РР›, Р‘РђР“ РРњР•РќРќРћ РР—-Р—Рђ Р­РўРћР™ РљРћРќРЎРўР РЈРљР¦РР =)) РњР« РћР”РРќ Р РўРћРў Р–Р• РќРћР РњРђР›Р¬РќР«Р™ РљРђР”Р  РҐРЈРЇР§РРњ Р”Р’Рђ Р РђР—Рђ РР—-Р—Рђ Р­РўРћР“Рћ IF'Рђ
 				if (250 < BalanceBeemTimeCounter)
 				{
 					ulong nID = _aq__PROBA__AudioFrames.Dequeue().nID;
@@ -525,7 +525,7 @@ namespace BTL
 					(new Logger()).WriteDebug2("BYTES FROM BTL IS NULL 2 - repeat the last [id=" + _cFrameVideoLast.nID + "][ref=" + _cFrameVideoLast.nReferences + "]");
 				}
 				else if (cFrame.cVideo.oFrameBytes is byte[] && 1 > cFrame.cVideo.aFrameBytes.Length)
-					cRetVal = _cFrameVideoLast = _cVideoFrameEmpty; //получили признак необходимости очистить экран
+					cRetVal = _cFrameVideoLast = _cVideoFrameEmpty; //РїРѕР»СѓС‡РёР»Рё РїСЂРёР·РЅР°Рє РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё РѕС‡РёСЃС‚РёС‚СЊ СЌРєСЂР°РЅ
 				else
 					cRetVal = _cFrameVideoLast = cFrame.cVideo;
 

@@ -6,6 +6,8 @@ using System.Text;
 using helpers;
 using System.IO;
 using System.Runtime.InteropServices;
+using helpers.extensions;
+using System.Xml;
 
 namespace BTL.Play
 {
@@ -89,6 +91,7 @@ namespace BTL.Play
 		private object _oLockDispose;
 
         private PixelsMap _cPixelsMap;
+        private PixelsMap.Triple _cPMDuo;
         private List<Line> _aLines;
         private List<Column> _aColumns;
         private List<Effect> _aEffects;   //эффекты все лежат тут и они же еще лежат в _aLines или _aColumns
@@ -105,22 +108,27 @@ namespace BTL.Play
                 return nRetVal;
             }
         }
+		private DateTime _dtLastChange;
+		private bool _bChanged;
+        private bool _bMergedChanges;
 
-		//override public ulong nFramesTotal     //  отрубил проверить чо будет    тест проба внимание  //////////////////
-		//{
-		//    get
-		//    {
-		//        return ulong.MaxValue;
-		//    }
-		//}
-		//override public ulong nFrameCurrent
-		//{
-		//    get
-		//    {
-		//        return 0;
-		//    }
-		//}
-		private Composite()
+
+
+        //override public ulong nFramesTotal     //  отрубил проверить чо будет    тест проба внимание  //////////////////
+        //{
+        //    get
+        //    {
+        //        return ulong.MaxValue;
+        //    }
+        //}
+        //override public ulong nFrameCurrent
+        //{
+        //    get
+        //    {
+        //        return 0;
+        //    }
+        //}
+        private Composite()
             : base(EffectType.Composite)
         {
             _nWidth = 0;
@@ -132,48 +140,83 @@ namespace BTL.Play
         public Composite(ushort nDimensionTargetMax, Type enType) 
             :this()
         {
-            switch (enType)
-            {
-                case Type.Vertical:
-					_nWidth = nDimensionTargetMax;
-                    _aLines = new List<Line>();
-                    enType = Type.Vertical;
-                    break;
-                case Type.Horizontal:                 //это конструктор горизонтальный. TODO. ДОДЕЛАТЬ ДОБАВЛЕНИЕ !!!!!!!!!  
-					_nHeight = nDimensionTargetMax;
-                    _aColumns = new List<Column>();
-                    enType = Type.Horizontal;
-                    break;
-                case Type.Fixed:
-					_nHeight = _nWidth = nDimensionTargetMax;
-                    stArea = new Area(0, 0, _nWidth, _nHeight);
-                    enType = Type.Fixed;
-                    break;
-                default:
-                    break;
-            }
-            
-        }
+			Init(nDimensionTargetMax, enType);
+		}
         public Composite(ushort nWidth, ushort nHeight) //это конструктор для пустышки или константного размера
             : this()
+		{
+			Init(nWidth, nHeight);
+		}
+		public Composite(XmlNode cXmlNode)
+			: this()
+		{
+			try
+			{
+				base.LoadXML(cXmlNode);
+				//bFullRenderOnPrepare = cXmlNode.AttributeOrDefaultGet<bool>("render_on_prepare", false);   // можно бы реализовать, как в роле
+				Type cType = cXmlNode.AttributeOrDefaultGet<Type>("type", Type.Fixed);
+				if (cType == Type.Fixed)
+				{
+					Init(cXmlNode.AttributeGet<ushort>("width"), cXmlNode.AttributeGet<ushort>("height"));
+				}
+				else
+					Init(cXmlNode.AttributeGet<ushort>("max_dimension"), cXmlNode.AttributeOrDefaultGet<Type>("type", Type.Vertical));
+
+				XmlNode cNodeChild;
+				if (null != (cNodeChild = cXmlNode.NodeGet("effects", false)))
+					EffectsAdd(cNodeChild);
+				else
+					throw new Exception("effects section is missing");
+			}
+			catch
+			{
+				Fail();
+				throw;
+			}
+		}
+		void Init(ushort nDimensionTargetMax, Type enType)
+		{
+			switch (enType)
+			{
+				case Type.Vertical:
+					_nWidth = nDimensionTargetMax;
+					_aLines = new List<Line>();
+					enType = Type.Vertical;
+					break;
+				case Type.Horizontal:                 //это конструктор горизонтальный. TODO. ДОДЕЛАТЬ ДОБАВЛЕНИЕ !!!!!!!!!  
+					_nHeight = nDimensionTargetMax;
+					_aColumns = new List<Column>();
+					enType = Type.Horizontal;
+					break;
+				case Type.Fixed:
+					_nHeight = _nWidth = nDimensionTargetMax;
+					stArea = new Area(0, 0, _nWidth, _nHeight);
+					enType = Type.Fixed;
+					break;
+				default:
+					break;
+			}
+		}
+		void Init(ushort nWidth, ushort nHeight)
+		{
+			stArea = new Area(0, 0, nWidth, nHeight);
+			_nWidth = nWidth;
+			_nHeight = nHeight;
+			_eType = Type.Fixed;
+		}
+		~Composite()
         {
-            stArea = new Area(0, 0, nWidth, nHeight);
-            _nWidth = nWidth;
-            _nHeight = nHeight;
-            _eType = Type.Fixed;
-        }
-        ~Composite()
-        {
-            try
-            {
-                _cPixelsMap.Dispose();
-            }
+			try
+			{
+				Dispose();
+                Baetylus.PixelsMapDispose(_cPMDuo, true);
+			}
 			catch (Exception ex)
 			{
 				(new Logger()).WriteError(ex);
 			}
-        }
-        public override void Dispose()
+		}
+		public override void Dispose()
         {
 			lock(_oLockDispose)
 			{
@@ -183,6 +226,7 @@ namespace BTL.Play
 			}
 			try
 			{
+				Logger.Timings cTimings = new helpers.Logger.Timings("composite:disposing");
 				if (null != _aEffects)
 				{
 					lock (_aEffects)
@@ -203,23 +247,17 @@ namespace BTL.Play
 						}
 					}
 					if (0 < _aEffects.Count)
-						new System.Threading.Thread(() =>
+					{
+						cTimings.TotalRenew();
+						for (int nI = 0; nI < _aEffects.Count; nI++)
 						{
-							System.Threading.Thread.CurrentThread.IsBackground = true;
-							try
-							{
-								for (int nI = 0; nI < _aEffects.Count; nI++)
-								{
-									_aEffects[nI] = null;
-									System.Threading.Thread.Sleep(10);
-									GC.Collect(GC.MaxGeneration, GCCollectionMode.Optimized);
-								}
-								_aEffects = null;
-							}
-							catch { }
-							(new Logger()).WriteDebug3("composite disposed: " + GetHashCode());
-						}).Start();
-					}
+							_aEffects[nI].Dispose();
+							_aEffects[nI] = null;
+						}
+						cTimings.Stop("composite dispose", "GC-mode: " + System.Runtime.GCSettings.LatencyMode + "; btl_queue:" + BTL.Baetylus.nCurrentDeviceBufferCount, 5);
+						(new Logger()).WriteDebug3("composite disposed: " + nID);
+                    }
+                }
 			}
 			catch (Exception ex)
 			{
@@ -228,7 +266,16 @@ namespace BTL.Play
 			base.Dispose();
         }
 
-        public void EffectAdd(EffectVideo cEffect)
+		public void EffectsAdd(XmlNode cXmlNode)
+		{
+			foreach (XmlNode cXN in cXmlNode.NodesGet())
+				EffectAdd((IVideo)Effect.EffectGet(cXN), cXN);
+		}
+		public void EffectAdd(IVideo iVideo, XmlNode cXmlNode)
+		{
+			EffectAdd((EffectVideo)iVideo, cXmlNode.AttributeOrDefaultGet<ushort>("indent", 0));
+		}
+		public void EffectAdd(EffectVideo cEffect)
         {
 			EffectAdd(cEffect, 0);
         }
@@ -236,37 +283,51 @@ namespace BTL.Play
         {
             if (null == cEffect)
                 throw new Exception("effect:add: общий массив объектов не инициализирован");
-            _aEffects.Add(cEffect);
-            _nCurentIndent = nIndent;
+			lock (_aEffects)
+			{
+				if (this.stMergingMethod != cEffect.stMergingMethod)
+					cEffect.stMergingMethod = this.stMergingMethod;
 
-            switch (_eType)
-            {
-                case Type.Vertical:
-                    if (null == _aLines)
-                        throw new Exception("effect:add: горизонтальный массив объектов не инициализирован");
-                    if (1 > _aLines.Count || cEffect.stArea.nWidth > _nWidth - _aLines[_aLines.Count - 1].nWidth)
-                    {
-                        if (0 < _aLines.Count)
-                            _aLines.Last().bFull = true;
-                        _aLines.Add(new Line(cEffect, this));
-                    }
-                    else
-                        _aLines[_aLines.Count - 1].Add(cEffect);
-					Area stArea = this.stArea;
-                    stArea.nWidth = stArea.nWidth < _aLines[_aLines.Count - 1].nWidth ? stArea.nWidth = _aLines[_aLines.Count - 1].nWidth : stArea.nWidth;
-					this.stArea = stArea;
-                    break;
-                case Type.Horizontal:
-                    //TODO   реализовать бы...
-                    if (null == _aColumns)
-                        throw new Exception("effect:add: вертикальный массив объектов не инициализирован");
-                    break;
-                case Type.Fixed:
-                    //здесь ничего не надо - в _aEffects уже добавили ))
-                    break;
-                default:
-                    break;
-            }
+				cEffect.cDock.eCorner = Dock.Corner.unknown; // чтобы сами не позиционировались при препаре
+
+                Effect cItemTMP;
+                if (null != (cItemTMP = _aEffects.FirstOrDefault(o => o.nID == cEffect.nID)))   // один и тот же эффект можно сделать добавление, но нужно item-ы вводить, чтобы помнить разные Area, как в роле
+                    throw new Exception("effect:add: this effect is already here [id=" + cEffect.nID + "][name=" + cEffect.sName + "]");
+                if (cEffect.cMask!=null)    // т.к. композит разводит все эффекты, то смысла в масках нет. 
+                    throw new Exception("effect:add: this effect is mask, but composite has not mask handler [id=" + cEffect.nID + "][name=" + cEffect.sName + "]");
+
+                _aEffects.Add(cEffect);
+				_nCurentIndent = nIndent;
+
+				switch (_eType)
+				{
+					case Type.Vertical:
+						if (null == _aLines)
+							throw new Exception("effect:add: горизонтальный массив объектов не инициализирован");
+						if (1 > _aLines.Count || cEffect.stArea.nWidth > _nWidth - _aLines[_aLines.Count - 1].nWidth)
+						{
+							if (0 < _aLines.Count)
+								_aLines.Last().bFull = true;
+							_aLines.Add(new Line(cEffect, this));
+						}
+						else
+							_aLines[_aLines.Count - 1].Add(cEffect);
+						Area stArea = this.stArea;
+						stArea.nWidth = stArea.nWidth < _aLines[_aLines.Count - 1].nWidth ? stArea.nWidth = _aLines[_aLines.Count - 1].nWidth : stArea.nWidth;
+						this.stArea = stArea;
+						break;
+					case Type.Horizontal:
+						//TODO   реализовать бы...
+						if (null == _aColumns)
+							throw new Exception("effect:add: вертикальный массив объектов не инициализирован");
+						break;
+					case Type.Fixed:
+						//здесь ничего не надо - в _aEffects уже добавили ))
+						break;
+					default:
+						break;
+				}
+			}
             
         }
         public void InvertOrder()
@@ -280,14 +341,31 @@ namespace BTL.Play
                 {
                     if (EffectStatus.Idle != ((IEffect)this).eStatus)
                         return;
+
+                    if (stMergingMethod.eDeviceType == MergingDevice.DisCom)
+                        PixelsMap.DisComInit();
+
                     foreach (Effect cEffect in _aEffects)
 						if (EffectStatus.Idle == cEffect.eStatus)
+						{
+							((IVideo)cEffect).stMergingMethod = this.stMergingMethod;
 							cEffect.Prepare();
-                    _cPixelsMap = new PixelsMap(this.bCUDA, this.stArea, PixelsMap.Format.ARGB32);
-                    _cPixelsMap.bKeepAlive = true;
-					if (1 > _cPixelsMap.nLength)
-						(new Logger()).WriteNotice("1 > _cPixelMap.nLength. composite.prepare");
-					_cPixelsMap.Allocate();
+						}
+
+                    if (null != _cPMDuo && stArea != _cPMDuo.cFirst.stArea)
+                    {
+                        Baetylus.PixelsMapDispose(_cPMDuo, true);
+                        _cPMDuo = null;
+                    }
+                    if (null == _cPMDuo)
+                    {
+                        _cPMDuo = new PixelsMap.Triple(this.stMergingMethod, this.stArea, PixelsMap.Format.ARGB32, true, Baetylus.PixelsMapDispose);
+                        if (1 > _cPMDuo.cFirst.nLength)
+                            (new Logger()).WriteNotice("1 > __cPixelsMap.nLength. composite.prepare");
+                        _cPMDuo.Allocate();
+                    }
+                    _cPMDuo.RenewFirstTime();
+                    nPixelsMapSyncIndex = byte.MaxValue;
                     base.Prepare();
                 }
                 catch (Exception ex)
@@ -318,44 +396,55 @@ namespace BTL.Play
         }
         override public void Stop()
         {
+            Baetylus.PixelsMapDispose(_cPMDuo, true);
+            _cPMDuo = null;
+
             base.Stop();
         }
         
-        override public PixelsMap FrameNext()
+        override public PixelsMap FrameNext()   // если население композита тексты и они не менялись, то можно ничего не менять вообще! (оптимизация чата и подобных)  // сделал
         {
+            _cPixelsMap = _cPMDuo.Switch(nPixelsMapSyncIndex);
+            if (null == _cPixelsMap) return null;
+
+            _bChanged = false;
 			base.FrameNext();
-            PixelsMap cPM = null;
+			PixelsMap cPM = null;
             List<PixelsMap> aPMs = new List<PixelsMap>();
-            List<Effect> aEffectsUsed = new List<Effect>();
-            IVideo iVideo;
+            Dictionary<Effect, PixelsMap> ahEffects_PMs = new Dictionary<Effect, PixelsMap>();
+            IVideo iVideo = null;
+
             foreach (Effect cEffect in _aEffects)
-			{
-				if (null == cEffect || !(cEffect is IVideo) || (EffectStatus.Running != cEffect.eStatus) || null == (cPM = (iVideo = (IVideo)cEffect).FrameNext()))
-					continue;
-                if (null != iVideo.iMask)
-                {
-                    aPMs.Add(iVideo.iMask.FrameNext());
-                    aPMs[aPMs.Count - 1].eAlpha = DisCom.Alpha.mask;
-                }
-				aPMs.Add(cPM);
-			}
-			if (0 < aPMs.Count)   // когда ==0   - это пустышка и не надо для нее делать pixelsmap
-			{
-                _cPixelsMap.Merge(aPMs);
+            {
+                if (null == cEffect || !(cEffect is IVideo) || (EffectStatus.Running != cEffect.eStatus))
+                    continue;
+                iVideo = (IVideo)cEffect;
+                iVideo.nPixelsMapSyncIndex = nPixelsMapSyncIndex;
+                cPM = iVideo.FrameNext();
+                if (null == cPM)
+                    continue;
+                aPMs.Add(cPM);
+                if (!_bChanged && (!(iVideo is Text) || ((Text)iVideo).dtChanged > _dtLastChange))
+                    _bChanged = true;
+            }
+
+            if (_bChanged && 0 < aPMs.Count)   // когда == 0   - это пустышка и не надо для нее делать pixelsmap   //  || _bMergedChanges
+            {
+                //_bMergedChanges = _bChanged;
+                _dtLastChange = DateTime.Now;
+				_cPixelsMap.Merge(aPMs);
 				Baetylus.PixelsMapDispose(aPMs.ToArray());
-				//if (bCUDA && !cRetVal.bCUDA)
-                //{
-                //    cPM = new PixelsMap(true, stArea, PixelsMap.Format.ARGB32);
-                //    cPM.CopyIn(cRetVal.CopyOut());
-                //    cPM.bKeepAlive = cRetVal.bKeepAlive;
-                //    PixelsMap cTemp = cRetVal;
-                //    cRetVal = cPM;
-                //    cTemp.Dispose(true);
-                //}
 			}
-			if (null != _cPixelsMap)
-				_cPixelsMap.nAlphaConstant = nCurrentOpacity;
-            return _cPixelsMap;
+
+            _cPixelsMap.nAlphaConstant = nCurrentOpacity;
+            if (null != cMask)
+                _cPixelsMap.eAlpha = cMask.eMaskType;
+
+            _cPixelsMap.Move(stArea.nLeft, stArea.nTop);
+
+            if (nFrameCurrent >= nDuration)
+				base.Stop();
+			return _cPixelsMap;
         }
     }
 }

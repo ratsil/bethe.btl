@@ -1,12 +1,13 @@
-using System;
+п»їusing System;
 using System.Collections.Generic;
 using System.Text;
 using System.Linq;
 using System.Drawing.Imaging;
 using System.Drawing;
 using helpers;
-
 using System.Diagnostics;
+using System.Xml;
+using helpers.extensions;
 
 namespace BTL.Play
 {
@@ -28,22 +29,22 @@ namespace BTL.Play
 				this.nTransitionDuration = nTransitionDuration;
             }
             public Item(IEffect iEffect)
-                : this(iEffect, Transition.TypeVideo.dissolve, Transition.TypeAudio.crossfade, ushort.MaxValue)  //_EdgesTransitions если ushort.MaxValue, то это значит переход по-умолчанию
+                : this(iEffect, Transition.TypeVideo.dissolve, Transition.TypeAudio.crossfade, ushort.MaxValue)  //_EdgesTransitions РµСЃР»Рё ushort.MaxValue, С‚Рѕ СЌС‚Рѕ Р·РЅР°С‡РёС‚ РїРµСЂРµС…РѕРґ РїРѕ-СѓРјРѕР»С‡Р°РЅРёСЋ
             { }
             public Item(IEffect iEffect, ushort TransDuration)
                 : this(iEffect, Transition.TypeVideo.dissolve, Transition.TypeAudio.crossfade, TransDuration)
             { }
         }
 
-        public override ushort nEffectsQty
+        public override ushort nEffectsQty   // in catch block  
         {
             get
             {
                 return (ushort)_aItemsQueue.Count;
             }
         }
-		public override ulong nSumDuration
-		{
+		public override ulong nSumDuration   // in catch block  
+        {
 			get
 			{
 				ulong nRetVal = 0;
@@ -68,44 +69,80 @@ namespace BTL.Play
 				return nRetVal;
 			}
 		}
+        public override MergingMethod stMergingMethod    // to search try-catch blocks in hierarchy use Roslyn  
+        {
+            get
+            {
+                return base.stMergingMethod;
+            }
+            set
+            {
+                if (base.stMergingMethod == value)
+                    return;
+                if (eStatus == EffectStatus.Idle)
+                {
+                    lock (_aItemsQueue)
+                    {
+                        base.stMergingMethod = value;
+                        foreach (Item cI in _aItemsQueue)
+                        {
+                            if (cI.iEffect.eStatus == EffectStatus.Idle)
+                            {
+                                if (cI.iEffect is EffectVideo)
+                                    ((EffectVideo)cI.iEffect).stMergingMethod = value;
+                            }
+                            else
+                                (new Logger()).WriteError("playlist: impossible to change bCUDA in not idle effect [pl_hc=" + nID + "][ef_hc=" + cI.iEffect.nID + "][status=" + eStatus + "][merging=" + base.stMergingMethod + "]");
+                        }
+                    }
+                }
+                else
+                    (new Logger()).WriteError("playlist: impossible to change bCUDA in not idle playlist [pl_hc=" + nID + "][status=" + eStatus + "][merging=" + base.stMergingMethod + "]");
+            }
+        }
+        public delegate void PlaylistIsEmpty(Playlist cSender);
+        public event PlaylistIsEmpty OnPlaylistIsEmpty;
+        public bool bStopOnEmpty
+        {
+            get { return _bStopOnEmpty; }
+            set { _bStopOnEmpty = value; }
+        }
+
         private List<Item> _aItemsQueue;
         private List<Item> _aItemsOnAir;
         private Item _cTransition;
         private Queue<Dictionary<IEffect, ContainerAction>> _aqContainerActions;
         private List<int> _aItemsEffectHashCodesToDelete;
 		private ThreadBufferQueue<IEffect> _aqPrepareQueue;
-		private byte[] _aAudioSilence;
         private bool _bNeedEffectsReorder;
         private ushort _nDefaultTransitionDuration;
         private ushort _nNextTransDuration;
-        public bool _bStopping = false;
-        public ushort _nEndTransDuration;
-        public delegate void PlaylistIsEmpty(Playlist cSender);
-        public event PlaylistIsEmpty OnPlaylistIsEmpty;
-		public object cPrepareLock = "";
-        private bool _bStopOnEmpty;
-        public bool bStopOnEmpty
-        { 
-            get { return _bStopOnEmpty; }
-            set { _bStopOnEmpty = value; }
-        }
-        public Dock cDock
-        {
-            set
-            {
-				(new Logger()).WriteDebug3("playlist:dock:set:in");
-				if (stArea == Area.stEmpty)
-					stArea = stArea.Dock(Baetylus.Helper.cBaetylus.cBoard.stArea, value);
-				(new Logger()).WriteDebug4("playlist:dock:set:out");
+        private bool _bStopping = false;
+        private object _oLockPrepare;
+        private bool _bPrepared;
+        private object _oLockStart;
+        private bool _bStarted;
+        private object _oLockStop;
+		private bool _bStopped;
+		private bool _bStopOnEmpty;
+		private Item _cItemOnAir
+		{
+			get
+			{
+				if (_aItemsOnAir[0] != _cTransition)
+					return _aItemsOnAir[0];
+				else if (_aItemsOnAir.Count > 1)
+					return _aItemsOnAir[1];
+				return null;
 			}
 		}
+
 		public Playlist()
 			: base(EffectType.Playlist)
-        {
+		{
 			try
 			{
 				_nDefaultTransitionDuration = 0;
-                _nEndTransDuration = 0;
 				_aqContainerActions = new Queue<Dictionary<IEffect, ContainerAction>>();
 				_aqPrepareQueue = new ThreadBufferQueue<IEffect>(false, true);
                 _aItemsEffectHashCodesToDelete = new List<int>();
@@ -114,11 +151,31 @@ namespace BTL.Play
 				_cTransition = new Item(new Transition());
 				_cTransition.bIsActive = false;
 				_nNextTransDuration = ushort.MaxValue;
-				_aAudioSilence = new byte[2 * Preferences.nAudioBytesPerFramePerChannel];
 				System.Threading.ThreadPool.QueueUserWorkItem(PrepareAsync);
 				//_nPrepareFrameQty = (ushort)(_nTransitionFrameQty * 4);
-
 				aChannelsAudio = new byte[0];  // UNDONE
+				_oLockStop = new object();
+				_oLockPrepare = new object();
+                _oLockStart = new object();
+            }
+			catch
+			{
+				Fail();
+				throw;
+			}
+		}
+		public Playlist(XmlNode cXmlNode)
+			: this()
+		{
+			try
+			{
+				base.LoadXML(cXmlNode);
+				bStopOnEmpty = cXmlNode.AttributeOrDefaultGet<bool>("stop_on_empty", false);
+				XmlNode cNodeChild;
+				if (null != (cNodeChild = cXmlNode.NodeGet("effects", false)))
+					EffectsAdd(cNodeChild);
+				else
+					throw new Exception("effects section is missing");
 			}
 			catch
 			{
@@ -126,11 +183,11 @@ namespace BTL.Play
 				throw;
 			}
 		}
-        ~Playlist()
+		~Playlist()
         {
         }
 
-		#region AnimationAdd function
+		#region AnimationAdd functions
 		public Animation AnimationAdd(string sFileName, ushort nLoopsQty, bool bKeepAlive, ushort nTransDur)
         {
 			Animation cRetVal = new Animation(sFileName, nLoopsQty, bKeepAlive);
@@ -139,49 +196,81 @@ namespace BTL.Play
         }
 		public void AnimationAdd(Animation cAnimation, ushort nTransDur)
 		{
-			EffectAdd(new Item(cAnimation, nTransDur));
+			ItemAdd(new Item(cAnimation, nTransDur));
 		}
 		#endregion
-        #region VideoAdd function
+        #region VideoAdd functions
         public Video VideoAdd(string sFileName)
         {
-            return VideoAdd(sFileName, ushort.MaxValue);
+            return VideoAdd(sFileName, _nDefaultTransitionDuration);
         }
         public Video VideoAdd(string sFileName, ushort nTransDur)
         {
             Video cVideo = null;
             cVideo = new Video(sFileName);
             Item cItem = new Item(cVideo, nTransDur);
-            EffectAdd(cItem);
+            ItemAdd(cItem);
             return cVideo;
         }
         public void VideoAdd(Video cVideo)
         {
-            VideoAdd(cVideo, ushort.MaxValue);
+            VideoAdd(cVideo, _nDefaultTransitionDuration);
         }
         public void VideoAdd(Video cVideo, ushort nTransDur)
         {
-            EffectAdd(new Item(cVideo, nTransDur));
+            ItemAdd(new Item(cVideo, nTransDur));
         }
-        #endregion
-        #region EffectAdd function
-        public void EffectAdd(Effect cEffect)
+		#endregion
+		#region EffectAdd functions
+		private void EffectsAdd(XmlNode cXmlNode)
+		{
+			foreach (XmlNode cXN in cXmlNode.NodesGet())
+				EffectAdd((IVideo)Effect.EffectGet(cXN), cXN);
+		}
+		private void EffectAdd(IVideo iVideo, XmlNode cXmlNode)
+		{
+			EffectAdd((Effect)iVideo, cXmlNode.AttributeOrDefaultGet<ushort>("transition", 0));
+		}
+		public void EffectAdd(Effect cEffect)
         {
-            EffectAdd(cEffect, ushort.MaxValue);
+            EffectAdd(cEffect, _nDefaultTransitionDuration);
         }
         public void EffectAdd(Effect cEffect, ushort nTransDur)
         {
             Item cItem = new Item(cEffect, nTransDur);
-            EffectAdd(cItem);
+            ItemAdd(cItem);
         }
-        private void EffectAdd(Item cItem)
+        private void ItemAdd(Item cItem)
         {
             if (null == cItem || null==cItem.iEffect)
                 throw new NullReferenceException("added Playlist item is null"); //TODO LANG
 			if (!(cItem.iEffect is IVideo) && !(cItem.iEffect is IAudio))
                 throw new Exception("non video/audio effect added"); //TODO LANG
 
-            ///////////////ОТЛАДКА..............
+            if (cItem.iEffect is IVideo)
+            {
+                if (cItem.iEffect.eStatus > EffectStatus.Idle && this.stMergingMethod != ((IVideo)cItem.iEffect).stMergingMethod)
+                    throw new Exception("РЅРµРєРѕСЂСЂРµРєС‚РЅР°В¤ СЃСЂРµРґР° РІС‹С‡РёСЃР»РµРЅРёР№: [playlist_merging=" + stMergingMethod + "][effect_merging=" + ((IVideo)cItem.iEffect).stMergingMethod + "]"); //TODO LANG
+                cItem.iEffect.iContainer = this;
+                ((IVideo)cItem.iEffect).stMergingMethod = this.stMergingMethod;
+            }
+
+
+
+
+
+            if (0 == this.stArea.nWidth || 0 == this.stArea.nHeight)
+			{
+				Area stAreaFirst = ((IVideo)cItem.iEffect).stArea;
+				if (0 < stAreaFirst.nWidth && 0 < stAreaFirst.nHeight)
+					this.stArea = new Area(this.stArea.nLeft, this.stArea.nTop, stAreaFirst.nWidth, stAreaFirst.nHeight);
+				else
+					this.stArea = Baetylus.Helper.stCurrentBTLArea;
+			}
+
+			if (cItem.iEffect is IVideo)
+				((IVideo)cItem.iEffect).stBase = stArea;
+            ///////////////СњвЂњР‹СЖ’В С..............
             //cItem._cEff.DurationSet(100);
 			Effect cEffect = (Effect)cItem.iEffect;
 			cEffect.Prepared += OnEffectPrepared;
@@ -192,12 +281,12 @@ namespace BTL.Play
 			bool bMustPrepare = false;
 			lock (_aItemsQueue)
 			{
-				(new Logger()).WriteDebug2("locking _aItemsQueue in EffectAdd [apl=" + _aItemsQueue.Count + "]");
-				if ((EffectStatus.Preparing == ((IEffect)this).eStatus || EffectStatus.Running == ((IEffect)this).eStatus) && 2 > _aItemsQueue.Count)
+				(new Logger()).WriteDebug4("locking _aItemsQueue in EffectAdd [apl=" + _aItemsQueue.Count + "]");
+				if ((EffectStatus.Preparing == eStatus || EffectStatus.Running == eStatus) && 2 > _aItemsQueue.Count)
 				{
 					lock (_aqPrepareQueue.oSyncRoot)
 					{
-						(new Logger()).WriteDebug2("adding to async prepare on adding [hc:" + cItem.iEffect.GetHashCode() + "]");
+                        (new Logger()).WriteDebug2("adding to async prepare on item_add [plhc:" + nID + "][hc:" + cItem.iEffect.nID + "][total_items=" + _aqPrepareQueue.nCount + "]");
 						_aqPrepareQueue.Enqueue(cItem.iEffect);
 					}
 				}
@@ -209,36 +298,63 @@ namespace BTL.Play
 
         override public void Prepare()
         {
-			(new Logger()).WriteDebug2("in [ph:" + GetHashCode() + "]");
-            if (EffectStatus.Idle == ((IEffect)this).eStatus || EffectStatus.Stopped == ((IEffect)this).eStatus)
+            lock (_oLockPrepare)
             {
-				if (0 < _aItemsQueue.Count)
-				{
-					if (EffectStatus.Idle == _aItemsQueue[0].iEffect.eStatus)
-					{
-						_aItemsQueue[0].iEffect.Prepare(); //_aEffectsToPrepare.Add(_aItemsQueue[0].iEffect);
-						(new Logger()).WriteDebug2("effect prepared in Prepare [ph:" + GetHashCode() + "][eh:" + _aItemsQueue[0].iEffect.GetHashCode() + "]");
-					}
-					Area stAreaFirst = ((IVideo)_aItemsQueue[0].iEffect).stArea;
-					if (0 == this.stArea.nWidth || 0 == this.stArea.nHeight)
-					{
-						if (0 < stAreaFirst.nWidth && 0 < stAreaFirst.nHeight)
-							this.stArea = new Area(this.stArea.nLeft, this.stArea.nTop, stAreaFirst.nWidth, stAreaFirst.nHeight);
-						else
-							this.stArea = Baetylus.Helper.cBaetylus.cBoard.stArea;
-					}
-				}
-                base.Prepare();
+                if (_bPrepared)
+                    return;
+                _bPrepared = true;
             }
-			(new Logger()).WriteDebug3("return");
+
+            (new Logger()).WriteDebug2("in [ph:" + nID + "]");
+            lock (_aItemsQueue)
+            {
+
+                if (EffectStatus.Idle == ((IEffect)this).eStatus || EffectStatus.Stopped == ((IEffect)this).eStatus)
+                {
+                    for (int nI = 0; nI < (_aItemsQueue.Count > 3 ? 3 : _aItemsQueue.Count); nI++)  // РїРѕСЃР»Рµ СЃС‚Р°СЂС‚Р° РїРµСЂРІС‹Рµ 2 Р±СѓРґСѓС‚ СѓР¶Рµ РїРѕРґРіРѕС‚РѕРІР»РµРЅС‹
+                    {
+                        if (EffectStatus.Idle == _aItemsQueue[nI].iEffect.eStatus)
+                        {
+                            _aItemsQueue[nI].iEffect.Prepare(); //_aEffectsToPrepare.Add(_aItemsQueue[0].iEffect);
+                            (new Logger()).WriteDebug2("effect [#" + nI + "] prepared in Prepare [plhc:" + nID + "][hc:" + _aItemsQueue[nI].iEffect.nID + "]");
+                        }
+                    }
+                    base.Prepare();
+                }
+            }
+            (new Logger()).WriteDebug3("return");
         }
-        override public void Start()
+        override public void Start(IContainer iContainer)
+		{
+			lock (_aItemsQueue)
+			{
+				try
+				{
+					if (null != iContainer)
+						base.iContainer = iContainer;
+					//base.Start(iContainer);
+					Start();
+				}
+				catch (Exception ex)
+				{
+					(new Logger()).WriteError(ex);
+				}
+			}
+		}
+		override public void Start()
         {
+            lock (_oLockStart)
+            {
+                if (_bStarted)
+                    return;
+                _bStarted = true;
+            }
+
             if (EffectStatus.Idle == ((IEffect)this).eStatus || EffectStatus.Stopped == ((IEffect)this).eStatus)
                 this.Prepare();
 			lock (_aItemsQueue)
 			{
-				(new Logger()).WriteDebug2("locking _aItemsQueue in Start [ph:" + GetHashCode() + "]");
+				(new Logger()).WriteDebug2("locking _aItemsQueue in Start [ph:" + nID + "]");
 				if (EffectStatus.Preparing == ((IEffect)this).eStatus)
 				{
 					base.Start(null);
@@ -249,43 +365,48 @@ namespace BTL.Play
 						_aItemsOnAir.Add(_cTransition);
 						if (0 < cItem.nTransitionDuration)
 						{
-							_cTransition.iEffect.nDuration = cItem.nTransitionDuration;
-							_cTransition.iEffect.iContainer = this;
-							Transition cTransition = (Transition)_cTransition.iEffect;
-							cTransition.EffectSourceSet(null);
-							cTransition.EffectTargetSet(cItem.iEffect);
-							cTransition.eTransitionTypeVideo = cItem.cTransitionVideo;
-							cTransition.eTransitionTypeAudio = cItem.cTransitionAudio;
-							//lock _aItemsQueue  был
-							cTransition.Prepare();
-							cTransition.Start(this);
+							if (nInDissolve < 2)
+								nInDissolve = cItem.nTransitionDuration.ToByte();
+
+							//_cTransition.iEffect.nDuration = cItem.nTransitionDuration;
+							//_cTransition.iEffect.iContainer = this;
+							//Transition cTransition = (Transition)_cTransition.iEffect;
+							//cTransition.EffectSourceSet(null);
+							//cTransition.EffectTargetSet(cItem.iEffect);
+							//cTransition.eTransitionTypeVideo = cItem.cTransitionVideo;
+							//cTransition.eTransitionTypeAudio = cItem.cTransitionAudio;
+							////lock _aItemsQueue  Р±С‹Р»
+							//cTransition.Prepare();
+							//cTransition.Start(this);
 
 						}
-						else
-						{
-							cItem.iEffect.Start(null);
-							(new Logger()).WriteDebug2("effect started in Start [ph:" + GetHashCode() + "][eh:" + cItem.iEffect.GetHashCode() + "]");
-							cItem.iEffect.iContainer = this;
-							_aItemsQueue.RemoveAt(0);
-							_aItemsOnAir.Add(cItem);
-							if (0 < _aItemsQueue.Count && EffectStatus.Idle == _aItemsQueue[0].iEffect.eStatus)
-							{
-								_aItemsQueue[0].iEffect.Prepare();
-								(new Logger()).WriteDebug2("effect prepared in Start [ph:" + GetHashCode() + "][eh:" + _aItemsQueue[0].iEffect.GetHashCode() + "]");
-							}
-						}
+
+						cItem.iEffect.Start(null);
+						(new Logger()).WriteDebug2("effect started in Start [plhc:" + nID + "][hc:" + cItem.iEffect.nID + "]");
+						cItem.iEffect.iContainer = this;
+						_aItemsQueue.RemoveAt(0);
+						_aItemsOnAir.Add(cItem);
+                        for (int nI = 0; nI < (_aItemsQueue.Count > 2 ? 2 : _aItemsQueue.Count); nI++)  
+                        {
+                            if (EffectStatus.Idle == _aItemsQueue[nI].iEffect.eStatus) // РЅРµ РґРѕР»Р¶РЅРѕ СЃСЂР°Р±Р°С‚С‹РІР°С‚СЊ РЅРёРєРѕРіРґР°, С‚.Рє. РїРµСЂРІС‹Рµ РґРІР°, С‡С‚Рѕ РґРѕР±Р°РІР»В¤СЋС‚СЃВ¤ РїРѕСЃР»Рµ this.prepare РїРѕРґРіРѕС‚Р°РІР»РёРІР°СЋС‚СЃВ¤ РІ add
+                            {
+                                _aqPrepareQueue.Enqueue(_aItemsQueue[nI].iEffect);
+                                (new Logger()).WriteDebug2("effect [#" + nI + "] added to async prepare in Start [plhc:" + nID + "][hc:" + _aItemsQueue[nI].iEffect.nID + "]");
+                            }
+                        }
+
 						Dictionary<IEffect, ContainerAction> aCAs = new Dictionary<IEffect, ContainerAction>();
 						aCAs.Add((IEffect)this, ContainerAction.Add);
 						if (null == iContainer)
-							iContainer = BTL.Baetylus.Helper.cBaetylus;  //контейнер по-умолчанию
+							iContainer = BTL.Baetylus.Helper.cBaetylus;  //РєРѕРЅС‚РµР№РЅРµСЂ РїРѕ-СѓРјРѕР»С‡Р°РЅРёСЋ
 						iContainer.EffectsProcess(aCAs);
-						(new Logger()).WriteDebug3("playlist started-1 [ph:" + GetHashCode() + "] [x,y: " + stArea.nLeft + ", " + stArea.nTop + "]");
+						(new Logger()).WriteDebug3("playlist started-1 [ph:" + nID + "] [x,y: " + stArea.nLeft + ", " + stArea.nTop + "]");
 					}
 					else
 					{
 						if (bStopOnEmpty)
 						{
-							(new Logger()).WriteError("there aren't any effects in playlist [hc:" + GetHashCode() + "]");
+							(new Logger()).WriteError("there aren't any effects in playlist [hc:" + nID + "]");
 							base.Stop();
 						}
 						else
@@ -295,14 +416,14 @@ namespace BTL.Play
 							Dictionary<IEffect, ContainerAction> aCAs = new Dictionary<IEffect, ContainerAction>();
 							aCAs.Add((IEffect)this, ContainerAction.Add);
 							if (null == iContainer)
-								iContainer = BTL.Baetylus.Helper.cBaetylus;  //контейнер по-умолчанию
+								iContainer = BTL.Baetylus.Helper.cBaetylus;  //РєРѕРЅС‚РµР№РЅРµСЂ РїРѕ-СѓРјРѕР»С‡Р°РЅРёСЋ
 							iContainer.EffectsProcess(aCAs);
-							(new Logger()).WriteDebug3("playlist started-2 [ph:" + GetHashCode() + "] [x,y: " + stArea.nLeft + ", " + stArea.nTop + "]");
+							(new Logger()).WriteDebug3("playlist started-2 [ph:" + nID + "] [x,y: " + stArea.nLeft + ", " + stArea.nTop + "]");
 						}
 					}
 				}
 				else
-					(new Logger()).WriteError(new Exception("playlist has error with prepare [hc:" + GetHashCode() + "] [this status = " + ((IEffect)this).eStatus + "]"));
+					(new Logger()).WriteError(new Exception("playlist has error with prepare [hc:" + nID + "] [this status = " + ((IEffect)this).eStatus + "]"));
 			}
 		}
 		public Effect GetCurrentEffect()
@@ -320,31 +441,31 @@ namespace BTL.Play
 					return null;
 			}
 		}
-		public bool Skip(bool bLast, ushort nNewTransDur) 
+		public bool Skip(bool bSkipIfLast, ushort nNewTransDur)   // in catch block  
 		{ 
-			return Skip(bLast, nNewTransDur, null);
+			return Skip(bSkipIfLast, nNewTransDur, null);
 		}
-		public bool Skip(bool bLast, ushort nNewTransDur, ushort nDelay)
-		{
-			return Skip(bLast, nNewTransDur, null, nDelay);
-		}
-		public bool Skip(bool bLast, ushort nNewTransDur, Effect cEffect)
-		{
-			return Skip(bLast, nNewTransDur, cEffect, 0);
-		}
-		public bool Skip(bool bLast, ushort nNewTransDur, Effect cEffect, ushort nDelay)
+		public bool Skip(bool bSkipIfLast, ushort nNewTransDur, ushort nDelay)   // in catch block  
         {
-			/*вот такие у нас случаи тут могут быть: 
-			 * 1. нам НЕ дали эффект
-			 * 1.1 у нас есть текущий эффект (в _aItemsOnAir)
-			 * 1.2 у нас нет текущего эффекта (в _aItemsOnAir), но есть эффект в очереди (в _aItemsQueue), т.е. пропускаем ближайший
-			 * 1.3 у нас нет эффектов вообще (ни в _aItemsOnAir, ни в _aItemsQueue)
-			 * 2. нам дали эффект
-			 * 2.1 и он лежит в _aItemsOnAir, а значит текущий
-			 * 2.2 и он лежит в _aItemsQueue
-			 * 2.3 у нас нет такого эффекта вообще (ни в _aItemsOnAir, ни в _aItemsQueue)
+			return Skip(bSkipIfLast, nNewTransDur, null, nDelay);
+		}
+		public bool Skip(bool bSkipIfLast, ushort nNewTransDur, Effect cEffect)   // in catch block  
+        {
+			return Skip(bSkipIfLast, nNewTransDur, cEffect, 0);
+		}
+		public bool Skip(bool bSkipIfLast, ushort nNewTransDur, Effect cEffect, ushort nDelay)   // in catch block  
+        {
+			/*РІРѕС‚ С‚Р°РєРёРµ Сѓ РЅР°СЃ СЃР»СѓС‡Р°Рё С‚СѓС‚ РјРѕРіСѓС‚ Р±С‹С‚СЊ: 
+			 * 1. РЅР°Рј РЊв‰€ РґР°Р»Рё СЌС„С„РµРєС‚
+			 * 1.1 Сѓ РЅР°СЃ РµСЃС‚СЊ С‚РµРєСѓС‰РёР№ СЌС„С„РµРєС‚ (РІ _aItemsOnAir)
+			 * 1.2 Сѓ РЅР°СЃ РЅРµС‚ С‚РµРєСѓС‰РµРіРѕ СЌС„С„РµРєС‚Р° (РІ _aItemsOnAir), РЅРѕ РµСЃС‚СЊ СЌС„С„РµРєС‚ РІ РѕС‡РµСЂРµРґРё (РІ _aItemsQueue), С‚.Рµ. РїСЂРѕРїСѓСЃРєР°РµРј Р±Р»РёР¶Р°Р№С€РёР№
+			 * 1.3 Сѓ РЅР°СЃ РЅРµС‚ СЌС„С„РµРєС‚РѕРІ РІРѕРѕР±С‰Рµ (РЅРё РІ _aItemsOnAir, РЅРё РІ _aItemsQueue)
+			 * 2. РЅР°Рј РґР°Р»Рё СЌС„С„РµРєС‚
+			 * 2.1 Рё РѕРЅ Р»РµР¶РёС‚ РІ _aItemsOnAir, Р° Р·РЅР°С‡РёС‚ С‚РµРєСѓС‰РёР№
+			 * 2.2 Рё РѕРЅ Р»РµР¶РёС‚ РІ _aItemsQueue
+			 * 2.3 Сѓ РЅР°СЃ РЅРµС‚ С‚Р°РєРѕРіРѕ СЌС„С„РµРєС‚Р° РІРѕРѕР±С‰Рµ (РЅРё РІ _aItemsOnAir, РЅРё РІ _aItemsQueue)
 			*/
-			(new Logger()).WriteDebug("playlist:skipping in [l:" + bLast + "][t:" + nNewTransDur + "][a.c:" + _aItemsOnAir.Count + "][q.c:" + _aItemsQueue.Count + "][pl:" + GetHashCode() + "][ef:" + (null == cEffect ? "NULL" : cEffect.GetHashCode().ToString()) + "][ef_frames:" + (null == cEffect ? "" : cEffect.nFramesTotal.ToString()) + "]");
+			(new Logger()).WriteDebug("playlist:skipping in [l:" + bSkipIfLast + "][t:" + nNewTransDur + "][a.c:" + _aItemsOnAir.Count + "][q.c:" + _aItemsQueue.Count + "][pl:" + nID + "][ef:" + (null == cEffect ? "NULL" : cEffect.nID.ToString()) + "][ef_frames:" + (null == cEffect ? "" : cEffect.nFramesTotal.ToString()) + "]");
 			Dictionary<IEffect, ContainerAction> aCAs = new Dictionary<IEffect, ContainerAction>();
             bool bCurrent = false;
 			Item cItem;
@@ -354,18 +475,18 @@ namespace BTL.Play
 				{
 					(new Logger()).WriteDebug2("locking _aItemsQueue in Skip");
 					if (null == cEffect)
-					{ //случаи 1.*
+					{ //СЃР»СѓС‡Р°Рё 1.*
 						if (null == (cItem = _aItemsOnAir.FirstOrDefault(o => o.bIsActive && o.iEffect.eType != EffectType.Transition)))
 						{
 							if(1 > _aItemsQueue.Count)
-							{ //случай 1.3
-								(new Logger()).WriteDebug2("playlist:skipping out because pl is empty [false][p.h:" + GetHashCode() + "][e.h:NULL]");
+							{ //СЃР»СѓС‡Р°Р№ 1.3
+								(new Logger()).WriteDebug2("playlist:skipping out because pl is empty [false][p.h:" + nID + "][e.h:NULL]");
 								return false;
 							}
-							//случай 1.2
+							//СЃР»СѓС‡Р°Р№ 1.2
 							cItem = _aItemsQueue[0];
 						}
-						else //случай 1.1
+						else //СЃР»СѓС‡Р°Р№ 1.1
 							bCurrent = true;
 						cEffect = (Effect)cItem.iEffect;
 					}
@@ -374,38 +495,44 @@ namespace BTL.Play
 						if (null == (cItem = _aItemsOnAir.FirstOrDefault(o => o.iEffect == cEffect)))
 						{
 							if (null == (cItem = _aItemsQueue.FirstOrDefault(o => o.iEffect == cEffect)))
-							{ //случай 2.3
-								(new Logger()).WriteDebug2("playlist:skipping out because no such effect in pl [false][p.h:" + GetHashCode() + "][e.h:" + cEffect.GetHashCode() + "]");
+							{ //СЃР»СѓС‡Р°Р№ 2.3
+								(new Logger()).WriteDebug2("playlist:skipping out because no such effect in pl [false][p.h:" + nID + "][e.h:" + cEffect.nID + "]");
 								return false;
 							}
-							//случай 2.2
+							//СЃР»СѓС‡Р°Р№ 2.2
 						}
-						else //случай 2.1
+						else //СЃР»СѓС‡Р°Р№ 2.1
 							bCurrent = true;
 					}
-					if (!bLast && (1 > _aItemsQueue.Count || (2 > _aItemsQueue.Count && 2 > _aItemsOnAir.Count))) //тут я подразумеваю, что в _aItemsOnAir ВСЕГДА есть транзишн... если это не так, нужно переписывать условие// v да! он всегда есть!
+					if (!bSkipIfLast && (1 > _aItemsQueue.Count || (2 > _aItemsQueue.Count && 2 > _aItemsOnAir.Count))) //С‚СѓС‚ В¤ РїРѕРґСЂР°Р·СѓРјРµРІР°СЋ, С‡С‚Рѕ РІ _aItemsOnAir В¬вЂ”в‰€в€љЖ’С РµСЃС‚СЊ С‚СЂР°РЅР·РёС€РЅ... РµСЃР»Рё СЌС‚Рѕ РЅРµ С‚Р°Рє, РЅСѓР¶РЅРѕ РїРµСЂРµРїРёСЃС‹РІР°С‚СЊ СѓСЃР»РѕРІРёРµ// v РґР°! РѕРЅ РІСЃРµРіРґР° РµСЃС‚СЊ!
 					{
-						(new Logger()).WriteDebug2("playlist:skipping out [false][p.h:" + GetHashCode() + "][e.h:" + cEffect.GetHashCode() + "]");
+						(new Logger()).WriteDebug2("playlist:skipping out [false][p.h:" + nID + "][e.h:" + cEffect.nID + "]");
 						return false;
 					}
 					if (!bCurrent || !SkipCurrent(nNewTransDur, nDelay))
-					{ //либо случаи 1.1 и 2.1 и мы опоздали, либо случаи 1.2 и 2.2
-						if (1 < _aItemsQueue.Count && cItem == _aItemsQueue[0])
-							_aqPrepareQueue.Enqueue(_aItemsQueue[1].iEffect);
-						if (!bCurrent)
-							_aItemsQueue.Remove(cItem);
+					{ //Р»РёР±Рѕ СЃР»СѓС‡Р°Рё 1.1 Рё 2.1 Рё РјС‹ РѕРїРѕР·РґР°Р»Рё, Р»РёР±Рѕ СЃР»СѓС‡Р°Рё 1.2 Рё 2.2
+                        if (1 < _aItemsQueue.Count && cItem == _aItemsQueue[0])
+                        {
+                            (new Logger()).WriteDebug2("adding to async prepare on skip [plhc:" + nID + "][hc:" + _aItemsQueue[1].iEffect.nID + "][total_items=" + _aqPrepareQueue.nCount + "]");
+                            _aqPrepareQueue.Enqueue(_aItemsQueue[1].iEffect);
+                        }
+                        if (!bCurrent)
+                        {
+                            (new Logger()).WriteDebug2("removing item from queue on skip [hc:" + cItem.iEffect.nID + "]");
+                            _aItemsQueue.Remove(cItem);
+                        }
 					}
-					(new Logger()).WriteDebug3("playlist:skipping out [true][p.h:" + GetHashCode() + "][e.h:" + cEffect.GetHashCode() + "]");
+					(new Logger()).WriteDebug3("playlist:skipping out [true][p.h:" + nID + "][e.h:" + cEffect.nID + "]");
 				}
 			}
 			(new Logger()).WriteDebug4("playlist:skipping out [true][hc:" + cEffect + "]");
             return true;
         }
-		private bool SkipCurrent(ushort nNewTransDur)
-		{
+		private bool SkipCurrent(ushort nNewTransDur)   // in catch block  
+        {
 			return SkipCurrent(nNewTransDur, 0);
 		}
-        private bool SkipCurrent(ushort nNewTransDur, ushort nDelay)
+        private bool SkipCurrent(ushort nNewTransDur, ushort nDelay)   // in catch block  
         {
 			Item cItem = _aItemsOnAir.FirstOrDefault(o => o.bIsActive && o.iEffect.eType != EffectType.Transition);
 			if (null == cItem)
@@ -413,7 +540,7 @@ namespace BTL.Play
 				(new Logger()).WriteDebug2("playlist:skipping:current out [false][hc:" + cItem.iEffect + "]");
 				return false;	
 			}
-			ushort nOffset = 4;  // хер его знает теперь зачем он! Кто знает, напишите!!
+			ushort nOffset = 2;  // С…РµСЂ РµРіРѕ Р·РЅР°РµС‚ С‚РµРїРµСЂСЊ Р·Р°С‡РµРј РѕРЅ! В С‚Рѕ Р·РЅР°РµС‚, РЅР°РїРёС€РёС‚Рµ!!     // СЏ РґСѓРјР°СЋ СЌС‚Рѕ РїСЂР°РїРѕСЂС‰РµСЃРєРёР№ Р·Р°Р·РѕСЂС‡РµРі. СЃРґРµР»Р°Р» РµРіРѕ 2 РІРјРµСЃС‚Рѕ 4С… ))  // 
 			if (nDelay > nOffset)
 				nOffset = nDelay;
             if (nNewTransDur == ushort.MaxValue)
@@ -423,16 +550,18 @@ namespace BTL.Play
 			if (0 < _aItemsQueue.Count && _aItemsQueue[0].iEffect.nDuration < (ulong)(nNewTransDur*2))
 				nNewTransDur = (ushort)(_aItemsQueue[0].iEffect.nDuration / 2);
 			_nNextTransDuration = nNewTransDur;
+
 			if (1 > _aItemsQueue.Count)
-				_nEndTransDuration = nNewTransDur;
-			cItem.iEffect.nDuration = cItem.iEffect.nFrameCurrent + nNewTransDur + nOffset;
+				this.nDuration = this.nFrameCurrent + (nOutDissolve > 1 ? nOutDissolve : nNewTransDur) + nOffset;
+			else
+				cItem.iEffect.nDuration = cItem.iEffect.nFrameCurrent + nNewTransDur + nOffset;
+
 			if (ulong.MaxValue > cItem.iEffect.nFramesTotal)
 				(new Logger()).WriteNotice("playlist:skipping:current [nFramesTotal: " + cItem.iEffect.nFramesTotal + "] [new duration: " + cItem.iEffect.nDuration + "]");
             return true;
         }
-		public void PLItemsDelete(int[] aEffectIDs)
-		{
-			bool bNeedToPrepareNextEffect = false;
+		public void PLItemsDelete(int[] aEffectIDs)   // in catch block  
+        {
 			IEffect cDeletedPreparing = null;
 			lock (_aItemsQueue)
 			{
@@ -443,7 +572,7 @@ namespace BTL.Play
 				Item cPLI;
 				foreach (int nHash in _aItemsEffectHashCodesToDelete)
 				{
-					cPLI = _aItemsQueue.FirstOrDefault(o => o.iEffect.GetHashCode() == nHash);
+					cPLI = _aItemsQueue.FirstOrDefault(o => o.iEffect.nID == nHash);
 					if (null != cPLI)
 						aItemsToDelete.Add(cPLI);
 				}
@@ -451,28 +580,34 @@ namespace BTL.Play
 				{
 					lock (_aqPrepareQueue.oSyncRoot)
 					{
-						if (0 < _aqPrepareQueue.nCount && _aItemsQueue[0].iEffect == _aqPrepareQueue.Peek())
-							cDeletedPreparing = _aItemsQueue[0].iEffect;
-						if (_aItemsQueue[0] == cPLIt && (_aItemsQueue[0].iEffect.eStatus == EffectStatus.Preparing || null != cDeletedPreparing)) // он может быть айдл, но на препаре заслан
-							bNeedToPrepareNextEffect = true;
+                        if (_aqPrepareQueue.Contains(cPLIt.iEffect))
+                        {
+                            _aqPrepareQueue.Remove(cPLIt.iEffect);
+                            (new Logger()).WriteDebug2("effect removed from async prepare in items_delete [plhc:" + nID + "][hc:" + cPLIt.iEffect.nID + "][total_items=" + _aqPrepareQueue.nCount + "]");
+                        }
 					}
 					_aItemsQueue.Remove(cPLIt);
 				}
 				_aItemsEffectHashCodesToDelete.Clear();
 				if (_aItemsQueue.Count == 0 && eStatus == EffectStatus.Preparing)
 					Stop();
-				else if (bNeedToPrepareNextEffect && _aItemsQueue.Count > 0)
+				else
 				{
 					lock (_aqPrepareQueue.oSyncRoot)
 					{
-						if (_aqPrepareQueue.Peek() == cDeletedPreparing)  // параллельно в препаре могли уже его удалить
-							_aqPrepareQueue.Dequeue();
-						_aqPrepareQueue.Enqueue(_aItemsQueue[0].iEffect);
+                        for (int nI = 0; nI < (_aItemsQueue.Count > 2 ? 2 : _aItemsQueue.Count); nI++)
+                        {
+                            if (!_aqPrepareQueue.Contains(_aItemsQueue[nI].iEffect) && EffectStatus.Idle == _aItemsQueue[nI].iEffect.eStatus) // С‡С‚Рѕ Р± Р·Р°СЂР°РЅРµРµ РѕС‚РїСЂРµРїР°СЂРёС‚СЊ 2 next effects
+                            {
+                                _aqPrepareQueue.Enqueue(_aItemsQueue[nI].iEffect);
+                                (new Logger()).WriteDebug2("effect [#" + nI + "] added to async prepare in items_delete [plhc:" + nID + "][hc:" + _aItemsQueue[nI].iEffect.nID + "][total_items=" + _aqPrepareQueue.nCount + "]");
+                            }
+                        }
 					}
 				}
 			}
 		}
-		private void PrepareAsync(object cState) // срид сложный из-за ожидания пока видео уже после препаре втянется в память (bFileInMemory)
+		private void PrepareAsync(object cState)   // worker       // СЃСЂРёРґ СЃР»РѕР¶РЅС‹Р№ РёР·-Р·Р° РѕР¶РёРґР°РЅРёВ¤ РїРѕРєР° РІРёРґРµРѕ СѓР¶Рµ РїРѕСЃР»Рµ РїСЂРµРїР°СЂРµ РІС‚В¤РЅРµС‚СЃВ¤ РІ РїР°РјВ¤С‚СЊ (bFileInMemory)
 		{
 			IEffect iEffect = null;
 			Stopwatch cStopwatch = null;
@@ -486,7 +621,7 @@ namespace BTL.Play
 
 						if (EffectStatus.Idle == iEffect.eStatus)
 						{
-							(new Logger()).WriteNotice("playlist:prepare:async: prepare started: [ph:" + GetHashCode() + "][type: " + iEffect.eType + "][duration=" + iEffect.nDuration + "] [frames= " + iEffect.nFramesTotal + "] [start=" + iEffect.nFrameStart + "] [hash=" + iEffect.GetHashCode() + "][queue_to_prepare=" + _aqPrepareQueue.nCount + "][apl=" + _aItemsQueue.Count + "]"); //logging
+							(new Logger()).WriteNotice("playlist:prepare:async: prepare started: [plhc:" + nID + "][type: " + iEffect.eType + "][duration=" + iEffect.nDuration + "] [frames= " + iEffect.nFramesTotal + "] [start=" + iEffect.nFrameStart + "] [ehc=" + iEffect.nID + "][queue_to_prepare=" + _aqPrepareQueue.nCount + "][apl=" + _aItemsQueue.Count + "]"); //logging
 
 							cStopwatch = Stopwatch.StartNew();
 							iEffect.Prepare();
@@ -503,34 +638,51 @@ namespace BTL.Play
 				}
 				catch (Exception ex)
 				{
-					if (0 < _aqPrepareQueue.nCount && iEffect == _aqPrepareQueue.Peek())
-						_aqPrepareQueue.Dequeue();
-					(new Logger()).WriteError(ex);
-					PLItemsDelete(new int[1] { iEffect.GetHashCode() });
-					//cEffError.eStatus = EffectStatus.Error;  хорошо бы чо-то такое делать наверно....
-					(new Logger()).WriteWarning("playlist:prepare:async: Effect was removed from playlist due to error with preparing!!!! [ph:" + GetHashCode() + "][eh:" + iEffect.GetHashCode() + "]"); //logging
-				}
+                    try
+                    {
+                        if (0 < _aqPrepareQueue.nCount && iEffect == _aqPrepareQueue.Peek())
+                            _aqPrepareQueue.Dequeue();
+                        PLItemsDelete(new int[1] { iEffect.nID });
+                        //cEffError.eStatus = EffectStatus.Error;  С…РѕСЂРѕС€Рѕ Р±С‹ С‡Рѕ-С‚Рѕ С‚Р°РєРѕРµ РґРµР»Р°С‚СЊ РЅР°РІРµСЂРЅРѕ....
+                    }
+                    catch (Exception ex2)
+                    {
+                        (new Logger()).WriteError("playlist:prepare:async:catch: error in catch block! [ph:" + nID + "][eh:" + (null == iEffect ? "NULL" : "" + iEffect.nID) + "]", ex2); //logging
+                    }
+                    finally
+                    {
+                        (new Logger()).WriteError("playlist:prepare:async: Effect was removed from playlist due to error with preparing!!!! [ph:" + nID + "][eh:" + (null == iEffect ? "NULL" : "" + iEffect.nID) + "]", ex); //logging
+                    }
+                }
 			}
 		}
 
         override public PixelsMap FrameNextVideo()
         {
-			(new Logger()).WriteDebug4("in");   //поиск бага
+			base.FrameNextVideo();
+			(new Logger()).WriteDebug4("in");   //РїРѕРёСЃРє Р±Р°РіР°
 			long nStart0, nStart = nStart0 = DateTime.Now.Ticks;
 			string sLog = "";
-            base.FrameNextVideo();
             int nIndx;
 			sLog += "________[base.FrameNext() = " + new TimeSpan(DateTime.Now.Ticks - nStart).TotalMilliseconds + "ms]";
 			nStart = DateTime.Now.Ticks;
 
-            #region . выполнение заданий из _aqContainerActions .
+            #region . РІС‹РїРѕР»РЅРµРЅРёРµ Р·Р°РґР°РЅРёР№ РёР· _aqContainerActions .
             Dictionary<IEffect, ContainerAction> ahMoveInfo = null;
             Item cItem = null;
-            lock (_aqContainerActions)
+
+			if (null!= _cItemOnAir &&  EffectStatus.Running != _cItemOnAir.iEffect.eStatus)
+			{
+				(new Logger()).WriteDebug3("playlist removes effect [hcpl:" + nID + "][hce:" + (_cItemOnAir.iEffect).nID + "][status="+ _cItemOnAir.iEffect.eStatus + "][air_count="+ _aItemsOnAir.Count + "]");
+				Dictionary<IEffect, ContainerAction> aCAs = new Dictionary<IEffect, ContainerAction>();
+				aCAs.Add(_cItemOnAir.iEffect, ContainerAction.Remove);
+				((IContainer)this).EffectsProcess(aCAs);
+			}
+			lock (_aqContainerActions)
             {
                 if (0 < _aqContainerActions.Count)
                 {
-					(new Logger()).WriteDebug4("playlist has container actions for process [hc:" + GetHashCode() + "]");
+					(new Logger()).WriteDebug4("playlist has container actions for process [hcpl:" + nID + "]");
 					while (0 < _aqContainerActions.Count)
                     {
                         ahMoveInfo = _aqContainerActions.Dequeue();
@@ -549,7 +701,7 @@ namespace BTL.Play
 									{
 										case ContainerAction.Add:
 											if (null != (cItem = _aItemsOnAir.Find(o => o.iEffect == cEffect)) && cItem != _cTransition)
-												throw new Exception("this container already has specified effect");//??????????????????????? так ли это плохо??
+												throw new Exception("this container already has specified effect");//??????????????????????? С‚Р°Рє Р»Рё СЌС‚Рѕ РїР»РѕС…Рѕ??
 											if (_cTransition.iEffect == cEffect)
 												_cTransition.bIsActive = true;
 											else if (0 < _aItemsQueue.Count && _aItemsQueue[0].iEffect == cEffect)
@@ -563,39 +715,43 @@ namespace BTL.Play
 													bItemPreparing = _aqPrepareQueue.Contains(_aItemsQueue[0].iEffect);
 													if (!bItemPreparing && EffectStatus.Idle == _aItemsQueue[0].iEffect.eStatus)
 													{
-														_aqPrepareQueue.Enqueue(_aItemsQueue[0].iEffect);
+                                                        (new Logger()).WriteWarning("adding this item to async prepare on container_add [plhc:" + nID + "][hc:" + _aItemsQueue[0].iEffect.nID + "][total_items=" + _aqPrepareQueue.nCount + "]");
+                                                        _aqPrepareQueue.Enqueue(_aItemsQueue[0].iEffect);
 														bItemPreparing = true;
 													}
 												}
 												if (bItemPreparing)
 												{
-													(new Logger()).WriteDebug2("waiting for preparing in lock _aItemsQueue (!) in FrameNextVideo in container_actions. [hc=" + _aItemsQueue[0].iEffect.GetHashCode() + "]");
+													(new Logger()).WriteDebug2("waiting for preparing in lock _aItemsQueue (!) in FrameNextVideo in container_actions. [hc=" + _aItemsQueue[0].iEffect.nID + "]");
 													while (_aqPrepareQueue.Contains(_aItemsQueue[0].iEffect))
-														System.Threading.Thread.Sleep(1); //ждем когда он отпрепарится.... вариантов у нас нет
+														System.Threading.Thread.Sleep(1); //Р¶РґРµРј РєРѕРіРґР° РѕРЅ РѕС‚РїСЂРµРїР°СЂРёС‚СЃВ¤.... РІР°СЂРёР°РЅС‚РѕРІ Сѓ РЅР°СЃ РЅРµС‚
 												}
 												if (EffectStatus.Preparing == _aItemsQueue[0].iEffect.eStatus)
 												{
 													_aItemsQueue[0].iEffect.Start(null);
-													(new Logger()).WriteDebug2("playlist item started in container_actions. [fhc:" + _aItemsQueue[0].iEffect.GetHashCode() + "][phc:" + GetHashCode() + "]" + (_aItemsQueue[0].iEffect is Video ? "[file_queue:" + ((Video)_aItemsQueue[0].iEffect).nFileQueueLength + "]" : ""));
+													(new Logger()).WriteDebug2("playlist item started in container_actions. [fhc:" + _aItemsQueue[0].iEffect.nID + "][plhc:" + nID + "]" + (_aItemsQueue[0].iEffect is Video ? "[file_queue:" + ((Video)_aItemsQueue[0].iEffect).nFileQueueLength + "]" : ""));
 													_aItemsQueue[0].iEffect.iContainer = this;
 												}
 
-												(new Logger()).WriteDebug3("playlist takes item [hc:" + GetHashCode() + "] with status:" + _aItemsQueue[0].iEffect.eStatus.ToString());
+												(new Logger()).WriteDebug3("playlist takes item [plhc:" + nID + "] with status:" + _aItemsQueue[0].iEffect.eStatus.ToString());
 
 												_aItemsOnAir.Add(_aItemsQueue[0]);
 												_aItemsQueue.RemoveAt(0);
 												lock (_aqPrepareQueue.oSyncRoot)
 												{
-													if (0 < _aItemsQueue.Count && !_aqPrepareQueue.Contains(_aItemsQueue[0].iEffect) && EffectStatus.Idle == _aItemsQueue[0].iEffect.eStatus)    // что б заранее отпрепарить next elem
-													{
-														_aqPrepareQueue.Enqueue(_aItemsQueue[0].iEffect);
-														(new Logger()).WriteDebug2("playlist item added for prepare [hc:" + _aItemsQueue[0].iEffect.GetHashCode() + "] [total_items=" + _aqPrepareQueue.nCount + "]");
-													}
+                                                    for (int nI = 0; nI < (_aItemsQueue.Count > 2 ? 2 : _aItemsQueue.Count); nI++)
+                                                    {
+                                                        if (!_aqPrepareQueue.Contains(_aItemsQueue[nI].iEffect) && EffectStatus.Idle == _aItemsQueue[nI].iEffect.eStatus) // С‡С‚Рѕ Р± Р·Р°СЂР°РЅРµРµ РѕС‚РїСЂРµРїР°СЂРёС‚СЊ 2 next effects
+                                                        {
+                                                            _aqPrepareQueue.Enqueue(_aItemsQueue[nI].iEffect);
+                                                            (new Logger()).WriteDebug2("effect [#" + nI + "] added to async prepare in container_add [plhc:" + nID + "][hc:" + _aItemsQueue[nI].iEffect.nID + "][total_items=" + _aqPrepareQueue.nCount + "]");
+                                                        }
+                                                    }
 												}
 											}
-											else
-												throw new Exception("trying to add non-playlist item");
-											break;
+                                            else
+                                                throw new Exception(_aItemsQueue.Count > 0 ? "trying to add non-playlist item" : "there are no items in queue to add");
+                                            break;
 										case ContainerAction.Remove:
 											//_aItemsOnAir.Remove(cEffect);
 											if (null != (cItem = _aItemsOnAir.Find(eff => eff.iEffect == cEffect)))
@@ -623,7 +779,7 @@ namespace BTL.Play
                     _bNeedEffectsReorder = true;
                 }
 				else
-					(new Logger()).WriteDebug4("playlist hasn't container actions for process [hc:" + GetHashCode() + "]");
+					(new Logger()).WriteDebug4("playlist hasn't container actions for process [hc:" + nID + "]");
 				if (_bNeedEffectsReorder)
                 {
                     cItem = null;
@@ -648,7 +804,7 @@ namespace BTL.Play
 			sLog += " [ContainerActions = " + new TimeSpan(DateTime.Now.Ticks - nStart).TotalMilliseconds + "ms]";
 			nStart = DateTime.Now.Ticks;
 
-            #region . выполнение заданий по удалению PLItems .
+            #region . РІС‹РїРѕР»РЅРµРЅРёРµ Р·Р°РґР°РЅРёР№ РїРѕ СѓРґР°Р»РµРЅРёСЋ PLItems .
 			if (0 < _aItemsEffectHashCodesToDelete.Count)
 			{
 				lock (_aItemsQueue)
@@ -658,13 +814,13 @@ namespace BTL.Play
 					Item cPLI;
 					foreach (int nHash in _aItemsEffectHashCodesToDelete)
 					{
-						cPLI = _aItemsQueue.FirstOrDefault(o => o.iEffect.GetHashCode() == nHash);
+						cPLI = _aItemsQueue.FirstOrDefault(o => o.iEffect.nID == nHash);
 						if (null != cPLI)
 							aItemsToDelete.Add(cPLI);
 					}
 					foreach (Item cPLIt in aItemsToDelete)
 					{
-						(new Logger()).WriteDebug3("effect removed from playlist [hc = " + cPLIt.GetHashCode() + "]");
+						(new Logger()).WriteDebug3("effect removed from playlist [hc = " + cPLIt.iEffect.nID + "]");
 						_aItemsQueue.Remove(cPLIt);
 					}
 					_aItemsEffectHashCodesToDelete.Clear();
@@ -680,7 +836,7 @@ namespace BTL.Play
 
             if (1 == _aItemsOnAir.Count && 0 == _aItemsQueue.Count && !_aItemsOnAir[0].bIsActive)
             {
-				(new Logger()).WriteDebug3("playlist is empty [hc:" + GetHashCode() + "]");
+				(new Logger()).WriteDebug3("playlist is empty [hc:" + nID + "]");
 				if (null != OnPlaylistIsEmpty)
 					OnPlaylistIsEmpty(this);
                 if (_bStopOnEmpty && EffectStatus.Stopped != this.eStatus)
@@ -691,7 +847,7 @@ namespace BTL.Play
 
             if (1 == _aItemsOnAir.Count && 0 < _aItemsQueue.Count && !_aItemsOnAir[0].bIsActive)
             {
-				(new Logger()).WriteDebug3("playlist adds next effect [hc:" + GetHashCode() + "]");
+				(new Logger()).WriteDebug3("playlist adds next effect [hc:" + nID + "]");
 				Dictionary<IEffect, ContainerAction> aCAs = new Dictionary<IEffect, ContainerAction>();
                     aCAs.Add(_aItemsQueue[0].iEffect, ContainerAction.Add);
                     ((IContainer)this).EffectsProcess(aCAs);
@@ -706,7 +862,7 @@ namespace BTL.Play
 
                 if (EffectStatus.Running != _aItemsOnAir[nIndx].iEffect.eStatus && _aItemsOnAir[nIndx] != _cTransition)
                 {
-					(new Logger()).WriteDebug3("playlist removes effect [hc:" + GetHashCode() + "][hce:" + (_aItemsOnAir[nIndx].iEffect).GetHashCode() + "]");
+					(new Logger()).WriteDebug3("playlist removes effect [hcpl:" + nID + "][hce:" + (_aItemsOnAir[nIndx].iEffect).nID + "][status=" + (_aItemsOnAir[nIndx].iEffect).eStatus + "][air_count=" + _aItemsOnAir.Count + "]");
 					Dictionary<IEffect, ContainerAction> aCAs = new Dictionary<IEffect, ContainerAction>();
                     aCAs.Add(_aItemsOnAir[nIndx].iEffect, ContainerAction.Remove);
                     ((IContainer)this).EffectsProcess(aCAs);
@@ -719,8 +875,7 @@ namespace BTL.Play
                 {
                     if (_aItemsOnAir[nIndx] != _cTransition)
                     {
-                        nDur = _aItemsOnAir[nIndx].iEffect.nFramesTotal;
-						nDur = _aItemsOnAir[nIndx].iEffect.nDuration < nDur ? _aItemsOnAir[nIndx].iEffect.nDuration : nDur;
+						nDur = GetDur(_aItemsOnAir[nIndx].iEffect);
                         if (ulong.MaxValue > nDur)
                         {
 							sLog += " [if_5 before lock = " + new TimeSpan(DateTime.Now.Ticks - nStart).TotalMilliseconds + "ms]";
@@ -728,7 +883,7 @@ namespace BTL.Play
 
 							ulong nFrameCurrent = _aItemsOnAir[nIndx].iEffect.nFrameCurrent;
 							lock (_aItemsQueue)
-							#region Расчет nNextTransDuration и если пора, то запуск _cTransitionEffect
+							#region вЂ“Р°СЃС‡РµС‚ nNextTransDuration Рё РµСЃР»Рё РїРѕСЂР°, С‚Рѕ Р·Р°РїСѓСЃРє _cTransitionEffect
 							{
 								if (new TimeSpan(DateTime.Now.Ticks - nStart).TotalMilliseconds > 40)
 									(new Logger()).WriteDebug2("locking _aItemsQueue in FrameNextVideo in FOR after more then 40ms waiting=" + new TimeSpan(DateTime.Now.Ticks - nStart).TotalMilliseconds);
@@ -737,8 +892,14 @@ namespace BTL.Play
 								sLog += " [if_5 lock begins = " + new TimeSpan(DateTime.Now.Ticks - nStart).TotalMilliseconds + "ms]";
 								nStart = DateTime.Now.Ticks;
 
-								if (_bStopping)
-									_aItemsQueue.Clear();
+								//if (_bStopping)
+								//{
+								//	foreach (Item cItt in _aItemsQueue)
+								//		if (cItt.iEffect.eStatus == EffectStatus.Preparing || cItt.iEffect.eStatus == EffectStatus.Running)
+								//			cItt.iEffect.Stop();
+								//	_aItemsQueue.Clear();
+								//	nDur = _aItemsOnAir[nIndx].iEffect.nDuration = (ulong)(nFrameCurrent + _nEndTransDuration + 1);
+								//}
 								if (0 < _aItemsQueue.Count)
 								{
 									if (ushort.MaxValue == _nNextTransDuration)
@@ -749,10 +910,13 @@ namespace BTL.Play
 										if (1 == _nNextTransDuration)
 											_nNextTransDuration = 0;
 									}
+									if (nFrameCurrent % 100 == 0)  // СЂР°Р· РІ 4 СЃРµРєСѓРЅРґС‹ РґР„СЂРіР°С‚СЊ, С‡С‚Рѕ Р± РЅРµ СЃР»РёС€РєРѕРј С‡Р°СЃС‚Рѕ
+										CheckQueueForPrepare(nDur - nFrameCurrent - _nNextTransDuration);
 									if (nFrameCurrent == nDur - _nNextTransDuration - 1)
-									{                               // т.е. если следующий элемент есть и его пора давать
+									{                               // С‚.Рµ. РµСЃР»Рё СЃР»РµРґСѓСЋС‰РёР№ СЌР»РµРјРµРЅС‚ РµСЃС‚СЊ Рё РµРіРѕ РїРѕСЂР° РґР°РІР°С‚СЊ
 										if (0 == _nNextTransDuration)
 										{
+											(new Logger()).WriteDebug3("playlist removes effect (for transition) [hcpl:" + nID + "][hce:" + (_aItemsOnAir[nIndx].iEffect).nID + "][status=" + (_aItemsOnAir[nIndx].iEffect).eStatus + "][air_count=" + _aItemsOnAir.Count + "]");
 											Dictionary<IEffect, ContainerAction> aCAs = new Dictionary<IEffect, ContainerAction>();
 											aCAs.Add(_aItemsOnAir[nIndx].iEffect, ContainerAction.Remove);
 											aCAs.Add(_aItemsQueue[0].iEffect, ContainerAction.Add);
@@ -771,33 +935,33 @@ namespace BTL.Play
 											cTransition.EffectTargetSet(_aItemsQueue[0].iEffect);
 											cTransition.eTransitionTypeVideo = _aItemsQueue[0].cTransitionVideo;
 											cTransition.eTransitionTypeAudio = _aItemsQueue[0].cTransitionAudio;
-											(new Logger()).WriteDebug3("transition prepare and start [hc_of_target:" + _aItemsQueue[0].iEffect.GetHashCode() + "]");
+											(new Logger()).WriteDebug3("transition prepare and start [hc_of_target:" + _aItemsQueue[0].iEffect.nID + "]");
 											cTransition.Prepare();
 											cTransition.Start(this);
 										}
 										_nNextTransDuration = ushort.MaxValue;
 									}
 								}
-								else
-								{
-									if (nFrameCurrent == nDur - _nEndTransDuration - 1 && 1 < _nEndTransDuration
-										|| nFrameCurrent < nDur - _nEndTransDuration - 1 && _bStopping)
-									{
-										if (EffectStatus.Running == ((IEffect)_cTransition.iEffect).eStatus)
-											_cTransition.iEffect.Stop();
-										if (EffectStatus.Stopped == ((IEffect)_cTransition.iEffect).eStatus)
-											_cTransition.iEffect.Idle();
-										_cTransition.iEffect.nDuration = _nEndTransDuration;
-										_cTransition.iEffect.iContainer = this;
-										Transition cTransition = (Transition)_cTransition.iEffect;
-										cTransition.EffectSourceSet(_aItemsOnAir[nIndx].iEffect);
-										cTransition.EffectTargetSet(null);
-										cTransition.eTransitionTypeVideo = _aItemsOnAir[nIndx].cTransitionVideo;
-										cTransition.eTransitionTypeAudio = _aItemsOnAir[nIndx].cTransitionAudio;
-										cTransition.Prepare();
-										cTransition.Start(this);
-									}
-								}
+								//else   // СЌС‚Рѕ РїСЂРѕСЃС‚Рѕ СЃС‚Р°РЅРґР°СЂС‚РЅС‹Р№ nOutDissolve
+								//{
+								//	if (nFrameCurrent == nDur - _nEndTransDuration - 1 && 1 < _nEndTransDuration
+								//		) //  || nFrameCurrent < nDur - _nEndTransDuration - 1 && _bStopping
+								//	{
+								//		if (EffectStatus.Running == ((IEffect)_cTransition.iEffect).eStatus)
+								//			_cTransition.iEffect.Stop();
+								//		if (EffectStatus.Stopped == ((IEffect)_cTransition.iEffect).eStatus)
+								//			_cTransition.iEffect.Idle();
+								//		_cTransition.iEffect.nDuration = _nEndTransDuration;
+								//		_cTransition.iEffect.iContainer = this;
+								//		Transition cTransition = (Transition)_cTransition.iEffect;
+								//		cTransition.EffectSourceSet(_aItemsOnAir[nIndx].iEffect);
+								//		cTransition.EffectTargetSet(null);
+								//		cTransition.eTransitionTypeVideo = _aItemsOnAir[nIndx].cTransitionVideo;
+								//		cTransition.eTransitionTypeAudio = _aItemsOnAir[nIndx].cTransitionAudio;
+								//		cTransition.Prepare();
+								//		cTransition.Start(this);
+								//	}
+								//}
 								sLog += " [if_5_inside_lock = " + new TimeSpan(DateTime.Now.Ticks - nStart2).TotalMilliseconds + "ms]";
 							}
 							sLog += " [if_5_outside_lock = " + new TimeSpan(DateTime.Now.Ticks - nStart).TotalMilliseconds + "ms]";
@@ -806,15 +970,18 @@ namespace BTL.Play
                     }
 					nStart = DateTime.Now.Ticks;
                     cVideoEffect = (IVideo)_aItemsOnAir[nIndx].iEffect;
-					(new Logger()).WriteDebug4("playlist calls for next frame from effect [hc:" + GetHashCode() + "][hce:" + cVideoEffect.GetHashCode() + "]");
+					(new Logger()).WriteDebug4("playlist calls for next frame from effect [hc:" + nID + "][hce:" + _aItemsOnAir[nIndx].iEffect.nID + "]");
 					long nCBStart = DateTime.Now.Ticks;
-					cFrame = cVideoEffect.FrameNext();
-					sLog += " [video_frame_next = " + new TimeSpan(DateTime.Now.Ticks - nCBStart).TotalMilliseconds + "ms]" + (_aItemsOnAir[nIndx].iEffect is Video ? "[video_queue_length = " + ((Video)_aItemsOnAir[nIndx].iEffect).nFileQueueLength + "]" : "");
+
+                    cVideoEffect.nPixelsMapSyncIndex = nPixelsMapSyncIndex;
+                    cFrame = cVideoEffect.FrameNext();
+
+                    sLog += " [video_frame_next = " + new TimeSpan(DateTime.Now.Ticks - nCBStart).TotalMilliseconds + "ms]" + (_aItemsOnAir[nIndx].iEffect is Video ? "[video_queue_length = " + ((Video)_aItemsOnAir[nIndx].iEffect).nFileQueueLength + "]" : "") + (_aItemsOnAir[nIndx].iEffect is Animation ? "[anim_cache = " + ((Animation)_aItemsOnAir[nIndx].iEffect).nCacheCurrent + "]" : "");
 					(new Logger()).WriteDebug4("playlist after videoframenext");
 					if (_aItemsOnAir[nIndx].iEffect is Video && ((Video)_aItemsOnAir[nIndx].iEffect).bFramesStarvation)
 						(new Logger()).WriteDebug2("there is a frame starvation! [queue="+ ((Video)_aItemsOnAir[nIndx].iEffect).nFileQueueLength + "]");
-//					Baetylus.Helper.cBaetylus.sPLLogs += "PL[" + this.GetHashCode() + "]:cVideoEffect.FrameNext(): [ " + new TimeSpan(DateTime.Now.Ticks - nCBStart).TotalMilliseconds.ToString() + "ms] ";
-					sLog += " [if_1_outside_lock = " + new TimeSpan(DateTime.Now.Ticks - nStart).TotalMilliseconds + "ms]"; // раньше стояла за фр.некстом
+                    //					Baetylus.Helper.cBaetylus.sPLLogs += "PL[" + this.nID + "]:cVideoEffect.FrameNext(): [ " + new TimeSpan(DateTime.Now.Ticks - nCBStart).TotalMilliseconds.ToString() + "ms] ";
+                    sLog += " [if_1_outside_lock = " + new TimeSpan(DateTime.Now.Ticks - nStart).TotalMilliseconds + "ms]"; // СЂР°РЅСЊС€Рµ СЃС‚РѕВ¤Р»Р° Р·Р° С„СЂ.РЅРµРєСЃС‚РѕРј
                 }
             }
 			sLog += " [FOR = " + new TimeSpan(DateTime.Now.Ticks - nStartFor).TotalMilliseconds + "ms]";
@@ -822,19 +989,29 @@ namespace BTL.Play
 			if (null != cFrame)
 				cFrame.Move((short)(cFrame.stArea.nLeft + stArea.nLeft), (short)(cFrame.stArea.nTop + stArea.nTop));
 			sLog += " [move = " + new TimeSpan(DateTime.Now.Ticks - nStart).TotalMilliseconds + "ms]";
-			if (new TimeSpan(DateTime.Now.Ticks - nStart0).TotalMilliseconds >= Preferences.nFrameDuration)    // logging
-				(new Logger()).WriteNotice("playlist.cs: FrameNext(): [pl_id=" + GetHashCode() + "] execution time > " + Preferences.nFrameDuration + "ms: [dur = " + new TimeSpan(DateTime.Now.Ticks - nStart0).TotalMilliseconds.ToString() + "ms]" + sLog);
+			if (new TimeSpan(DateTime.Now.Ticks - nStart0).TotalMilliseconds >= 20)    // logging  >= Preferences.nFrameDuration
+				(new Logger()).WriteNotice("playlist.cs: FrameNext(): [pl_id=" + nID + "] execution time > " + Preferences.nFrameDuration + "ms: [dur = " + new TimeSpan(DateTime.Now.Ticks - nStart0).TotalMilliseconds.ToString() + "ms]" + sLog);
 			(new Logger()).WriteDebug4("return");
-			if (this.nFrameCurrent >= this.nDuration) // что б при скипе лупа могли плагины назначать и дату смерти на всякий случай, а то хвосты иногда висят...
-				this.Stop();
+            if (null != cFrame)
+            {
+                cFrame.nAlphaConstant = nCurrentOpacity;
+                if (null != cMask)
+                    cFrame.eAlpha = cMask.eMaskType;
+            }
+
+            if (this.nFrameCurrent >= this.nDuration && EffectStatus.Stopped != this.eStatus)
+            {
+                Stop();
+            }
             return cFrame;
         }
-        override public byte[] FrameNextAudio()
+        override public Bytes FrameNextAudio()
         {
             base.FrameNextAudio();
-            byte[] aAudioBytes = null;
+            Bytes aAudioBytes = null;
             int nIndx;
-            for (nIndx = 0; nIndx < _aItemsOnAir.Count; nIndx++)
+			string sLog = "";
+			for (nIndx = 0; nIndx < _aItemsOnAir.Count; nIndx++)
             {
                 if (EffectStatus.Running != _aItemsOnAir[nIndx].iEffect.eStatus)
                     continue;
@@ -842,7 +1019,7 @@ namespace BTL.Play
                 {
                     //cAudioEffect = (IAudio)_aItemsOnAir[nIndx].iEffect;
 					long nCBStart = DateTime.Now.Ticks;
-					string sLog = "Audio frame next: [pl_hc = " + GetHashCode() + "][ef_hc = " + _aItemsOnAir[nIndx].iEffect.GetHashCode() + "]" + (_aItemsOnAir[nIndx].iEffect is Video ? "[video_queue_length before = " + ((Video)_aItemsOnAir[nIndx].iEffect).nFileQueueLength + "]" : "");
+					sLog = "Audio frame next: [pl_hc = " + nID + "][ef_hc = " + _aItemsOnAir[nIndx].iEffect.nID + "]" + (_aItemsOnAir[nIndx].iEffect is Video ? "[video_queue_length before = " + ((Video)_aItemsOnAir[nIndx].iEffect).nFileQueueLength + "]" : "");
 					aAudioBytes = ((IAudio)_aItemsOnAir[nIndx].iEffect).FrameNext();
 					double nTM = new TimeSpan(DateTime.Now.Ticks - nCBStart).TotalMilliseconds;
 					if (nTM >= Preferences.nFrameDuration)
@@ -850,15 +1027,44 @@ namespace BTL.Play
 
 					(new Logger()).WriteDebug4("playlist after audioframenext");
 
-//					Baetylus.Helper.cBaetylus.sPLLogs += "PL[" + this.GetHashCode() + "]:cAudioEffect.SampleNext(): [ " + nTM.ToString() + "ms] ";
+                    //					Baetylus.Helper.cBaetylus.sPLLogs += "PL[" + this.nID + "]:cAudioEffect.SampleNext(): [ " + nTM.ToString() + "ms] ";
                 }
             }
 			if (null == aAudioBytes)
-				aAudioBytes = _aAudioSilence;
-            return aAudioBytes; 
-        }
+			{
+				(new Logger()).WriteDebug2("playlist retuns audio silence. [pl_hc = " + nID + "] log=" + sLog);
+				aAudioBytes = Baetylus.cAudioSilence2Channels;
+			}
+			if (nCurrentLevel < 1)
+				aAudioBytes = Transition.TransitionAudioFrame(aAudioBytes, Transition.TypeAudio.crossfade, 1 - nCurrentLevel);
+			return aAudioBytes;
+		}
+		private ulong GetDur(IEffect cE)
+		{
+			return cE.nDuration < cE.nFramesTotal ? cE.nDuration : cE.nFramesTotal;
+		}
+		private void CheckQueueForPrepare(ulong nCurrentRemain)
+		{
+			int nIndx = 0;
+			while (nCurrentRemain < 1500 && nIndx < _aItemsQueue.Count)
+			{
+				lock (_aqPrepareQueue.oSyncRoot)
+				{
+					if (EffectStatus.Idle == _aItemsQueue[nIndx].iEffect.eStatus && !_aqPrepareQueue.Contains(_aItemsQueue[nIndx].iEffect))    
+					{
+                        (new Logger()).WriteDebug2("adding to async prepare on check_queue [hc:" + _aItemsQueue[nIndx].iEffect.nID + "] [total_items=" + _aqPrepareQueue.nCount + "]");
+                        _aqPrepareQueue.Enqueue(_aItemsQueue[nIndx].iEffect);
+					}
+				}
+				if (ulong.MaxValue > GetDur(_aItemsQueue[nIndx].iEffect))
+					nCurrentRemain += GetDur(_aItemsQueue[nIndx].iEffect);
+				else
+					break;
+				nIndx++;
+			}
+		}
 		override internal void EffectsProcess(Dictionary<IEffect, ContainerAction> ahMoveInfos)
-        {//заносит в _aqContainerActions все операции для Worker ....
+        {//Р·Р°РЅРѕСЃРёС‚ РІ _aqContainerActions РІСЃРµ РѕРїРµСЂР°С†РёРё РґР»В¤ Worker ....
             lock (_aqContainerActions)
             {
                 _aqContainerActions.Enqueue(ahMoveInfos);
@@ -872,15 +1078,30 @@ namespace BTL.Play
 
         public override void Stop()
         {
-			(new Logger()).WriteDebug3("playlist stopped [hc:" + GetHashCode() + "] [x,y: " + stArea.nLeft + ", " + stArea.nTop + "]");
-            if (2 == _aItemsOnAir.Count && !_aItemsOnAir[0].bIsActive && 1 < _nEndTransDuration)
-                _bStopping = true;
-            else
-                base.Stop();
+            lock (_oLockStop)
+            {
+                if (_bStopped && _bStopping)
+                    return;
+                if (_bStopping)
+                _bStopped = true;
+            }
+            (new Logger()).WriteDebug3("playlist stopped [hc:" + nID + "] [x,y: " + stArea.nLeft + ", " + stArea.nTop + "]");
+			if (
+					!_bStopping && 
+					2 == _aItemsOnAir.Count && 
+					!_aItemsOnAir[0].bIsActive && 
+					_aItemsOnAir[1].iEffect.nDuration - _aItemsOnAir[1].iEffect.nFrameCurrent > nOutDissolve &&  // РµСЃС‚СЊ РјРµСЃС‚Рѕ Сѓ СЌС„С„РµРєС‚Р°
+					this.nDuration > this.nFrameCurrent + nOutDissolve + 1)
+			{
+				_bStopping = true;
+				this.nDuration = this.nFrameCurrent + nOutDissolve + 1;
+				return;
+            }
+			base.Stop();
         }
         public void EndTransDurationSet(ushort nEndTransDuration)
         {
-            _nEndTransDuration = nEndTransDuration;
+			nOutDissolve = (byte)nEndTransDuration;
         }
     }
 }

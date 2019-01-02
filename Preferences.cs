@@ -10,57 +10,74 @@ namespace BTL
 {
 	public class Preferences : helpers.Preferences
 	{
-		public class DownStreamKeyer
-		{
-			public byte nLevel;
-			public bool bInternal;
-
-			public DownStreamKeyer()
-			{
-				nLevel = 255;
-				bInternal = true;
-			}
-		}
 		static private Preferences _cInstance = new Preferences();
-
-		static public bool bCUDA
-		{
+		static public MergingMethod stMerging
+        {
 			get
 			{
-				return _cInstance._bCUDA;
+				return _cInstance._stMerging;
 			}
 		}
-
-		static public byte nDeviceTarget
+        static public byte nDeviceTarget
 		{
 			get
 			{
 				return _cInstance._nDeviceTarget;
 			}
 		}
-		static public bool bDeviceInput
+        static public byte nTargetChannel
+        {
+            get
+            {
+                return _cInstance._nTargetChannel;
+            }
+        }
+        static public string sDeviceMake
+        {
+            get
+            {
+                return _cInstance._sDeviceMake;
+            }
+        }
+        static public ushort nFPS
+        {
+            get
+            {
+                if (_cInstance._nFPS == 0)
+                    throw new Exception("fps is 0. must be greater.");
+                return _cInstance._nFPS;
+            }
+            set
+            {
+                _cInstance._nFPS = value; // info from board
+            }
+        }
+        static public int nFrameDuration
+        {
+            get
+            {
+                if (_cInstance._nFrameDuration == 0)
+                {
+                    _cInstance._nFrameDuration = 1000 / nFPS;
+                }
+                return _cInstance._nFrameDuration;
+            }
+        }
+        static public int nGCFramesInterval
 		{
 			get
 			{
-				return _cInstance._bDeviceInput;
-			}
-		}
-		static public ushort nFPS
-		{
-			get
-			{
-				return _cInstance._nFPS;
-			}
-		}
-		static public int nFrameDuration
-		{
-			get
-			{
-				return _cInstance._nFrameDuration;
+				return _cInstance._nGCFramesInterval;
 			}
 		}
 
-
+		static public TimeSpan tsNextFrameTimeout
+		{
+			get
+			{
+				return _cInstance._tsNextFrameTimeout;
+			}
+		}
 		static public bool bAudio
 		{
 			get
@@ -82,7 +99,14 @@ namespace BTL
 				return _cInstance._nAudioChannelsQty;
 			}
 		}
-		static public byte nAudioBitDepth
+        static public byte nAudioChannelsQtyFfmpeg
+        {
+            get
+            {
+                return _cInstance._nAudioChannelsQtyFfmpeg;
+            }
+        }
+        static public byte nAudioBitDepth
 		{
 			get
 			{
@@ -103,98 +127,87 @@ namespace BTL
 				return _cInstance._nAudioBytesPerSample;
 			}
 		}
-		static public uint nAudioSamplesPerFrame
-		{
-			get
-			{
-				return _cInstance._nAudioSamplesPerFrame;
-			}
-		}
-		static public uint nAudioBytesPerFrame
-		{
-			get
-			{
-				return _cInstance._nAudioBytesPerFrame;
-			}
-		}
-		static public uint nAudioBytesPerFramePerChannel
-		{
-			get
-			{
-				return _cInstance._nAudioBytesPerFramePerChannel;
-			}
-		}
-		static public short nAudioVolumeChangeInDB
-		{
-			get
-			{
-				return _cInstance._nAudioVolumeChangeInDB;
-			}
-		}
-		static public float nAudioVolumeChange
-		{
-			get
-			{
-				return _cInstance._nAudioVolumeChange;
-			}
-		}
+        static public byte nAudioByteDepthToSend
+        {
+            get
+            {
+                return _cInstance._nAudioByteDepthToSend;
+            }
+        }
 
-		static public bool bVideo
+        static public uint nAudioSamplesPerFrame
+        {
+            get
+            {
+                if (_cInstance._nAudioSamplesPerFrame == 0)
+                {
+                    _cInstance._nAudioSamplesPerFrame = nAudioSamplesRate / nFPS;
+                }
+                return _cInstance._nAudioSamplesPerFrame;
+            }
+        }
+        static public uint nAudioBytesPerFrame
+        {
+            get
+            {
+                if (_cInstance._nAudioBytesPerFrame == 0)
+                {
+                    _cInstance._nAudioBytesPerFrame = nAudioSamplesPerFrame * nAudioBytesPerSample;
+                }
+                return _cInstance._nAudioBytesPerFrame;
+            }
+        }
+        static public uint nAudioBytesPerFramePerChannel
+        {
+            get
+            {
+                if (_cInstance._nAudioBytesPerFramePerChannel == 0)
+                {
+                    _cInstance._nAudioBytesPerFramePerChannel = (nAudioSamplesRate * nAudioByteDepth) / nFPS; ;
+                }
+                return _cInstance._nAudioBytesPerFramePerChannel;
+            }
+        }
+        static public bool bVideo
 		{
 			get
 			{
 				return _cInstance._bVideo;
 			}
 		}
-		static public string sVideoFormat
+		static public bool bAnamorphic
 		{
 			get
 			{
-				return _cInstance._sVideoFormat;
+				return _cInstance._bAnamorph;
 			}
 		}
-		static public DeckLinkAPI._BMDPixelFormat ePixelFormat
+        static public bool bBackgroundAlpha
+        {
+            get
+            {
+                return _cInstance._bBackgroundAlpha;
+            }
+        }
+        static public byte nClockBiasInFrames
 		{
 			get
 			{
-				return _cInstance._ePixelFormat;
-				//for input
-				//return DeckLinkAPI._BMDPixelFormat.bmdFormat8BitYUV;
-				//for output
-				//return DeckLinkAPI._BMDPixelFormat.bmdFormat8BitBGRA;
+				return _cInstance._nClockBiasInFrames;
 			}
 		}
-		static public DownStreamKeyer cDownStreamKeyer
-		{
-			get
-			{
-				return _cInstance._cDownStreamKeyer;
-			}
-			set
-			{
-				_cInstance._cDownStreamKeyer = value;
-			}
-		}
-
-		static public byte nQueueDeviceLength
-		{
-			get
-			{
-				return _cInstance._nQueueDeviceLength;
-			}
-		}
-		static public byte nQueueBaetylusLength
-		{
-			get
-			{
-				return _cInstance._nQueueBaetylusLength;
-				//#if SCR || PROMPTER
-				//                return 5;
-				//#else
-				//                return 25;
-				//#endif
-			}
-		}
+		//static public byte nQueueBaetylusLength
+		//{
+		//	get
+		//	{
+		//		return _cInstance._nQueueBaetylusLength;
+		//		//#if SCR || PROMPTER
+		//		//                return 5;
+		//		//#else
+		//		//                return 25;
+		//		//#endif
+		//	}
+		//}
 		static public ushort nQueueFfmpegLength
 		{
 			get
@@ -209,24 +222,18 @@ namespace BTL
 				return _cInstance._nQueueAnimationLength;
 			}
 		}
-
-		static public byte nQueueBias   // экспериментальная величина. На сколько видео должно быть в буфере больше чем аудио, чтобы был синхрон.
+		static public long nQueuePacketsLength
 		{
 			get
 			{
-				return _cInstance._nQueueBias;
+				return _cInstance._nQueuePacketsLength;
 			}
 		}
-		static public byte nQueueBiasSlip   // экспериментальная величина. На сколько может эта разность отклонятся от намеченной
+		static public byte nDecodingThreads
 		{
 			get
 			{
-				return _cInstance._nQueueBiasSlip;
-//#if SCR || DEBUG || PROMPTER
-//                return 4;
-//#else
-//                return 7;
-//#endif
+				return _cInstance._nDecodingThreads;
 			}
 		}
 		static public bool bClearScreenOnEmpty
@@ -236,46 +243,52 @@ namespace BTL
 				return _cInstance._bClearScreenOnEmpty;
 			}
 		}
-
-		static public byte nQueueBiasControlDelay   // экспериментальная величина. Через какое время включится контроль за разностью.
+		static public string sDebugFolder
 		{
 			get
 			{
-				return _cInstance._nQueueBiasControlDelay;
+				return _cInstance._sDebugFolder;
 			}
 		}
 
-		private bool _bCUDA;
+        static public void Reload()
+        {
+            _cInstance = new Preferences();
+        }
 
-		private byte _nDeviceTarget;
-		private bool _bDeviceInput;
-		private ushort _nFPS;
+        private MergingMethod _stMerging;
+        private byte _nDeviceTarget;
+        private string _sDeviceMake;
+        private byte _nTargetChannel;
+        private ushort _nFPS;
 		private int _nFrameDuration;
+		private int _nGCFramesInterval;
 
+		private TimeSpan _tsNextFrameTimeout;
 		private bool _bAudio;
 		private uint _nAudioSamplesRate;
 		private byte _nAudioChannelsQty;
-		private byte _nAudioBitDepth;
+        private byte _nAudioChannelsQtyFfmpeg;
+        private byte _nAudioBitDepth;
 		private byte _nAudioByteDepth;
 		private byte _nAudioBytesPerSample;
-		private uint _nAudioSamplesPerFrame;
+        private byte _nAudioBitDepthToSend;
+        private byte _nAudioByteDepthToSend;
+        private uint _nAudioSamplesPerFrame;
 		private uint _nAudioBytesPerFrame;
 		private uint _nAudioBytesPerFramePerChannel;
-		private short _nAudioVolumeChangeInDB;
-		private float _nAudioVolumeChange;
 
 		private bool _bVideo;
-		private string _sVideoFormat;
-		private DeckLinkAPI._BMDPixelFormat _ePixelFormat;
-		private DownStreamKeyer _cDownStreamKeyer;
+		private bool _bAnamorph;
+        private bool _bBackgroundAlpha;
 
-		private byte _nQueueDeviceLength;
-		private byte _nQueueBaetylusLength;
-		private byte _nQueueBias;
-		private byte _nQueueBiasSlip;
-		private byte _nQueueBiasControlDelay;
+        private byte _nClockBiasInFrames;
+		//private byte _nQueueBaetylusLength;
 		private ushort _nQueueFfmpegLength;
 		private byte _nQueueAnimationLength;
+		private long _nQueuePacketsLength;
+		private byte _nDecodingThreads;
+		private string _sDebugFolder;
 
 		private bool _bClearScreenOnEmpty;
 
@@ -285,94 +298,49 @@ namespace BTL
 		}
 		override protected void LoadXML(XmlNode cXmlNode)
 		{
-            if (null == cXmlNode || _bInitialized)
+			if (null == cXmlNode)  // || _bInitialized
 				return;
-			_bCUDA = cXmlNode.AttributeGet<bool>("cuda");
-			_bClearScreenOnEmpty = cXmlNode.AttributeGet<bool>("cls", false);
 
+            _stMerging = new MergingMethod(cXmlNode);
+            _bClearScreenOnEmpty = cXmlNode.AttributeOrDefaultGet<bool>("cls", false);
+			_sDebugFolder= cXmlNode.AttributeOrDefaultGet<string>("debug_folder", "");
 			XmlNode cNodeChild;
 			XmlNode cNodeDevice = cXmlNode.NodeGet("device");
             _nDeviceTarget = cNodeDevice.AttributeGet<byte>("target");
-            _bDeviceInput = ("input" == cNodeDevice.AttributeValueGet("type"));
-            _nFPS = cNodeDevice.AttributeGet<ushort>("fps");
-			_nFrameDuration = 1000 / _nFPS;
+            _sDeviceMake = cNodeDevice.AttributeValueGet("make");
+            if (_sDeviceMake == "aja")
+            {
+                _nTargetChannel = cNodeDevice.AttributeGet<byte>("target_channel");
+            }
 
-			if (!_bDeviceInput)
+            if (_bAudio = (null != (cNodeChild = cNodeDevice.NodeGet("audio", false))))
+            {
+                _nAudioSamplesRate = cNodeChild.AttributeGet<uint>("rate");
+                _nAudioChannelsQty = cNodeChild.AttributeGet<byte>("channels");
+                _nAudioChannelsQtyFfmpeg = cNodeChild.AttributeGet<byte>("channels_ffmpeg");
+                _nAudioBitDepth = cNodeChild.AttributeGet<byte>("bits");
+                _nAudioByteDepth = (byte)(_nAudioBitDepth / 8);
+                _nAudioBytesPerSample = (byte)(_nAudioByteDepth * _nAudioChannelsQty);
+                _nAudioBitDepthToSend = cNodeChild.AttributeOrDefaultGet<byte>("bits_send", _nAudioByteDepth);
+                _nAudioByteDepthToSend = (byte)(_nAudioBitDepthToSend / 8);
+            }
+            if (_bVideo = (null != (cNodeChild = cNodeDevice.NodeGet("video", false))))
 			{
-                if (_bAudio = (null != (cNodeChild = cNodeDevice.NodeGet("audio"))))
-				{
-                    _nAudioSamplesRate = cNodeChild.AttributeGet<uint>("rate");
-                    _nAudioChannelsQty = cNodeChild.AttributeGet<byte>("channels");
-                    _nAudioBitDepth = cNodeChild.AttributeGet<byte>("bits");
-					_nAudioByteDepth = (byte)(_nAudioBitDepth / 8);
-					_nAudioBytesPerSample = (byte)(_nAudioByteDepth * _nAudioChannelsQty);
-					_nAudioSamplesPerFrame = _nAudioSamplesRate / _nFPS;
-					_nAudioBytesPerFrame = _nAudioSamplesPerFrame * _nAudioBytesPerSample;
-					_nAudioBytesPerFramePerChannel = (_nAudioSamplesRate * _nAudioByteDepth) / _nFPS;
-					try
-					{
-                        _nAudioVolumeChangeInDB = cNodeChild.AttributeGet<short>("volume_change");
-						_nAudioVolumeChange = (float)Math.Pow(10, (float)_nAudioVolumeChangeInDB / 20);
-					}
-					catch { }
-				}
-			}
-
-            if (_bVideo = (null != (cNodeChild = cNodeDevice.NodeGet("video"))))
-			{
-                _sVideoFormat = cNodeChild.AttributeValueGet("format").ToLower();
-                string sValue = cNodeChild.AttributeValueGet("pixels").ToLower();
-				bool bFound = false;
-				foreach(DeckLinkAPI._BMDPixelFormat ePF in Enum.GetValues(typeof(DeckLinkAPI._BMDPixelFormat)))
-				{
-					if(ePF.ToString().ToLower().Contains(sValue))
-					{
-						if (bFound)
-						{
-							bFound = false;
-							break;
-						}
-						_ePixelFormat = ePF;
-						bFound = true;
-					}
-				}
-				if(!bFound)
-					throw new Exception("указан некорректный формат пикселей [pixels:" + sValue + "][" + cNodeChild.Name + "]"); //TODO LANG
-				if (!_bDeviceInput)
-				{
-					_cDownStreamKeyer = null;
-                    if (null != (cNodeChild = cNodeChild.NodeGet("keyer", false)))
-					{
-						_cDownStreamKeyer = new DownStreamKeyer();
-						try
-						{
-                            _cDownStreamKeyer.nLevel = cNodeChild.AttributeGet<byte>("level");
-						}
-						catch
-						{
-							throw new Exception("указан некорректный формат уровня DSK [level][" + cNodeChild.Name + "]"); //TODO LANG
-						}
-						try
-						{
-                            _cDownStreamKeyer.bInternal = ("internal" == cNodeChild.AttributeValueGet("type"));
-						}
-						catch
-						{
-							throw new Exception("указан некорректный тип DSK [type][" + cNodeChild.Name + "]"); //TODO LANG
-						}
-					}
-				}
-			}
+				_bAnamorph = cNodeChild.AttributeOrDefaultGet<bool>("anamorph", false);
+                _bBackgroundAlpha = cNodeChild.AttributeOrDefaultGet<bool>("alpha", false);
+            }
 
             cNodeChild = cNodeDevice.NodeGet("queue");
-            _nQueueDeviceLength = cNodeChild.AttributeGet<byte>("device");
-            _nQueueBaetylusLength = cNodeChild.AttributeGet<byte>("btl");
+            _nClockBiasInFrames = cNodeChild.AttributeGet<byte>("clock_bias");
+            //_nQueueBaetylusLength = cNodeChild.AttributeGet<byte>("btl");
 			_nQueueFfmpegLength = cNodeChild.AttributeGet<ushort>("ffmpeg");
 			_nQueueAnimationLength = cNodeChild.AttributeGet<byte>("animation");
-            cNodeChild = cNodeChild.NodeGet("bias");
-            _nQueueBiasSlip = cNodeChild.AttributeGet<byte>("slip");
-            _nQueueBiasControlDelay = cNodeChild.AttributeGet<byte>("delay");
-			_nQueueBias = cNodeChild.InnerText.ToByte();
+			_nQueuePacketsLength = cNodeChild.AttributeGet<long>("packets");  // bytes qty  200 000 000
+			_nDecodingThreads = cNodeChild.AttributeGet<byte>("threads");
+			_tsNextFrameTimeout = cNodeChild.AttributeGet<TimeSpan>("frame_timeout");
+            if (_tsNextFrameTimeout.TotalSeconds<=0)
+                (new Logger()).WriteWarning("btl.pref: [timeout<=0 " + _tsNextFrameTimeout.TotalSeconds + " s]");
+            _nGCFramesInterval = cNodeChild.AttributeGet<int>("gc_interval");
 		}
 	}
 }

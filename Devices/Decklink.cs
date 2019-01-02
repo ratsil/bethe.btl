@@ -1,4 +1,4 @@
-using System;
+п»їusing System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -7,10 +7,10 @@ using DeckLinkAPI;
 using helpers;
 using System.Linq;
 
-// отладка
+// РѕС‚Р»Р°РґРєР°
 using System.Drawing;
-using System.Drawing.Imaging;           // отладка
-// отладка
+using System.Drawing.Imaging;           // РѕС‚Р»Р°РґРєР°
+// РѕС‚Р»Р°РґРєР°
 
 namespace BTL
 {
@@ -185,7 +185,7 @@ namespace BTL
 
 					long nFrameDuration, nFrameTimescale;
 					_iDLOutputDisplayMode.GetFrameRate(out nFrameDuration, out nFrameTimescale);
-					_nFPS = (ushort)((nFrameTimescale + (nFrameDuration - 1)) / nFrameDuration); //до ближайшего целого - взято из примера деклинка
+					_nFPS = (ushort)((nFrameTimescale + (nFrameDuration - 1)) / nFrameDuration); //РґРѕ Р±Р»РёР¶Р°Р№С€РµРіРѕ С†РµР»РѕРіРѕ - РІР·СЏС‚Рѕ РёР· РїСЂРёРјРµСЂР° РґРµРєР»РёРЅРєР°
 
 					_bDoWritingFrames = false;
 					_aqWritingFrames = new Queue<byte[]>();
@@ -341,7 +341,7 @@ namespace BTL
 			{
 				lock (_ahFramesBuffersBinds)
 				{
-					if (_ahFramesBuffersBinds.Values.Contains(cVideoFrame))   // проверить было ли вообще такое!!!!
+					if (_ahFramesBuffersBinds.Values.Contains(cVideoFrame))   // РїСЂРѕРІРµСЂРёС‚СЊ Р±С‹Р»Рѕ Р»Рё РІРѕРѕР±С‰Рµ С‚Р°РєРѕРµ!!!!
 						(new Logger()).WriteError(new Exception("TRYING TO INSERT FRAME [type = IDeckLinkMutableVideoFrame] INTO _ahFramesBuffersBinds, THAT ALREADY EXISTS THERE!"));
 					_ahFramesBuffersBinds.Add(oRetVal, cVideoFrame);
 				}
@@ -406,7 +406,7 @@ namespace BTL
 			try
 			{
 				_iDLOutput.GetBufferedAudioSampleFrameCount(out nAudioSamplesBuffered);
-				#region отладка
+				#region РѕС‚Р»Р°РґРєР°
 				/*
                     BMD.DeckLink._nAudioSamplesBuffered = nAudioSamplesBuffered; 
                     if (DeckLink._bMustGetImage)
@@ -442,7 +442,7 @@ namespace BTL
 					if (Preferences.nAudioBytesPerFrame != cFrameAudio.aFrameBytes.Length)
 						(new Logger()).WriteWarning("wrong audio buffer length: " + cFrameAudio.aFrameBytes.Length + " bytes. expecting " + Preferences.nAudioBytesPerFrame + " bytes.");
 
-					//BTL.Baetylus.nAudioStreamTime = cFrameAudio.nID;  //отладка
+					//BTL.Baetylus.nAudioStreamTime = cFrameAudio.nID;  //РѕС‚Р»Р°РґРєР°
 					nAudioStreamTime = (long)(_nAudioStreamTime * Preferences.nAudioSamplesPerFrame);
 					_nAudioStreamTime++;
 
@@ -478,7 +478,7 @@ namespace BTL
 			try
 			{
 				_iDLOutput.GetBufferedVideoFrameCount(out nVideoFramesBuffered);
-				//BTL.Baetylus.nVideoFramesBuffered = nVideoFramesBuffered; //отладка
+				//BTL.Baetylus.nVideoFramesBuffered = nVideoFramesBuffered; //РѕС‚Р»Р°РґРєР°
 				while (Preferences.nQueueDeviceLength > nVideoFramesBuffered) // (_nVideoBufferCapacity > nVideoFramesBuffered)
 				{
 
@@ -488,7 +488,7 @@ namespace BTL
 						break;
 					}
 
-					#region отладка
+					#region РѕС‚Р»Р°РґРєР°
 					//BTL.Baetylus._nVideoStreamTime = _nVideoStreamTime;
 					//if (Baetylus._bMustGetImageInDevice)
 					//{
@@ -508,7 +508,7 @@ namespace BTL
 					{
 						if (!_ahFramesBuffersBinds.ContainsKey(cFrameVideo))
 						{
-							(new Logger()).WriteError(new Exception("полученный видео буфер не зарегистрирован [" + cFrameVideo.pFrameBytes.ToInt64() + "]"));
+							(new Logger()).WriteError(new Exception("РїРѕР»СѓС‡РµРЅРЅС‹Р№ РІРёРґРµРѕ Р±СѓС„РµСЂ РЅРµ Р·Р°СЂРµРіРёСЃС‚СЂРёСЂРѕРІР°РЅ [" + cFrameVideo.pFrameBytes.ToInt64() + "]"));
 							continue;
 						}
 
@@ -669,7 +669,7 @@ namespace BTL
 				_nLastScTimeComplited = _cStopWatch.ElapsedMilliseconds;
 
 				_bNeedToAddFrame = true;
-				#region закаменчено /*   */ 
+				#region Р·Р°РєР°РјРµРЅС‡РµРЅРѕ /*   */ 
 				//bool bFound = false;
 				//IntPtr pFrameLast = IntPtr.Zero;
 				//if (completedFrame != _cFrameEmpty)
@@ -698,7 +698,7 @@ namespace BTL
 				//    }
 				//}
 				//if (!bFound)
-				//    throw new Exception("не найден показанный кадр");
+				//    throw new Exception("РЅРµ РЅР°Р№РґРµРЅ РїРѕРєР°Р·Р°РЅРЅС‹Р№ РєР°РґСЂ");
 				//if (Preferences.bFrameLastSave && IntPtr.Zero != pFrameLast)
 				//{
 				//    if (null == aFrameLastBytes)

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -11,11 +11,14 @@ namespace BTL
 		event BTL.Play.Effect.EventDelegate FrameMaking;
 		Area stArea { get; set; }
         bool bOpacity { get; set; }
-        bool bCUDA { get; set; }
+        MergingMethod stMergingMethod { get; set; }
         IVideo iMask { get; set; }
-		byte nInDissolve { get; set; }
-		byte nOutDissolve { get; set; }
-		byte nMaxOpacity { get; set; }
+        Play.Mask cMask { get; set; }
+        byte nInDissolve { get; set; }
+        byte nOutDissolve { get; set; }
+        byte nMaxOpacity { get; set; }
+        byte nPixelsMapSyncIndex { get; set; }
+        Area stBase { get; set; }
 
         PixelsMap FrameNext();
         void Skip();

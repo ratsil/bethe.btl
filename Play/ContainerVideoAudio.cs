@@ -29,23 +29,20 @@ namespace BTL.Play
         static private void WorkerEvents()
         {
             Tuple<EventDelegate, Effect, Effect> cEvent;
-			System.Diagnostics.Stopwatch cWatch = new System.Diagnostics.Stopwatch();
-			while (true)
+			Logger.Timings cTimings = new Logger.Timings("conteiner_WorkerEvents");
+            while (true)
 			{
 				try
 				{
 					cEvent = _aqEvents.Dequeue();
-					cWatch.Reset();
-					cWatch.Restart();
+
+					cTimings.TotalRenew();
 					cEvent.Item1(cEvent.Item2, cEvent.Item3);
-					(new Logger()).WriteDebug3("event sended [hc = " + cEvent.Item3.GetHashCode() + "][" + cEvent.Item1.Method.Name + "]");
-					cWatch.Stop();
-					if (40 < cWatch.ElapsedMilliseconds)
-						(new Logger()).WriteDebug3("duration: " + cWatch.ElapsedMilliseconds + " queue: " + _aqEvents.nCount);
-					if (0 < _aqEvents.nCount)
-						(new Logger()).WriteDebug3(" queue: " + _aqEvents.nCount);
-                }
-                catch (System.Threading.ThreadAbortException)
+					(new Logger()).WriteDebug3("event sent cva [hc = " + cEvent.Item3.nID + "][" + cEvent.Item1.Method.Name + "][events_queue=" + _aqEvents.nCount + "]");
+					//GC.Collect
+					cTimings.Stop("work too long", "", 5);
+				}
+				catch (System.Threading.ThreadAbortException)
                 {
                     break;
                 }
@@ -57,7 +54,7 @@ namespace BTL.Play
         }
         static public void EventSend(EventDelegate dEvent, Effect cSender, Effect cEffect)
         {
-			(new Logger()).WriteDebug3("in [hc = " + cEffect.GetHashCode() + "]");
+			(new Logger()).WriteDebug3("in [hc = " + cEffect.nID + "]");
 			_aqEvents.Enqueue(new Tuple<EventDelegate, Effect, Effect>(dEvent, cSender, cEffect));
         }
         virtual protected void OnEffectAdded(Effect cSender)
@@ -72,13 +69,13 @@ namespace BTL.Play
         }
         virtual protected void OnEffectStarted(Effect cSender)
         {
-			(new Logger()).WriteDebug3("in [hc = " + cSender.GetHashCode() + "][" + (null == EffectStarted ? "null" : "ok") + "]");
+			(new Logger()).WriteDebug3("in [hc = " + cSender.nID + "][" + (null == EffectStarted ? "null" : "ok") + "]");
 			if (null != EffectStarted)
                 EventSend(EffectStarted, this, cSender);
         }
         virtual protected void OnEffectStopped(Effect cSender)
         {
-			(new Logger()).WriteDebug3("in [hc = " + cSender.GetHashCode() + "][" + (null == EffectStopped ? "null" : "ok") + "]");
+			(new Logger()).WriteDebug3("in [hc = " + cSender.nID + "][" + (null == EffectStopped ? "null" : "ok") + "]");
 			if (null != EffectStopped)
                 EventSend(EffectStopped, this, cSender);
         }
@@ -201,7 +198,14 @@ namespace BTL.Play
                 return this.nEffectsQty;
             }
         }
-        
+        MergingMethod? IContainer.stMergingMethod
+        {
+            get
+            {
+                return Preferences.stMerging;
+            }
+        }
+
         void IContainer.EffectsProcess(Dictionary<IEffect, ContainerAction> ahMoveInfos)
         {
 			this.EffectsProcess(ahMoveInfos);

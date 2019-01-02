@@ -1,0 +1,141 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<!-- Если надо распознать эффекты не в ingenie.userspace, а в BTL, то нужен node "effects" -->
+<template destroy="self">
+	<effects>
+		<!--сюда класть эффекты btl (не плагины) - см примеры ниже-->		
+	</effects>
+</template>
+
+<animation layer="10" opacity="false" loops="1" folder="/path/next.zip" keep_alive="false">
+	<hide delay="0"/>
+	<show delay="0" />
+	<dock corner="upper_left" />  <!-- если upper_left, то не обязательна  -->
+	<offset left="50" top="221" />
+</animation>
+
+<!--  z-buffer == layer  -->
+<text z-buffer="12" duration="134" in_dissolve="6" out_dissolve="6" width_max="350" >
+	<show delay="25"/>
+	<offset left="64" top="253" />
+	<font name="Segoe UI" size="20" style="1">
+		<color alpha="255" red="253" green="243" blue="5" />
+	</font>
+	<value>CUES_ARTIST</value>
+</text>
+
+<clock z-buffer="101" opacity="false" format="HH:mm" in_dissolve="6" out_dissolve="6" >
+	<show delay="124"/>
+	<dock corner="center" />
+	<offset left="872" top="434" />
+	<font name="Segoe UI" size="20" width="80" style="1">
+		<!-- 1=bold   2=italic   3=bold | italic    Pancetta Pro SmBd -->
+		<color alpha="255" red="255" green="255" blue="255" />
+		<!-- red="238" green="30" blue="133 -->
+		<border width="0">
+			<color alpha="255" red="0" green="0" blue="0"  />
+		</border>
+	</font>
+</clock>
+
+<playlist z-buffer="100" opacity="false">
+	<channels />
+	<hide type="skip" />
+	<offset left="50" top="40" />
+	<effects>
+		<animation order="0" opacity="false" loops="1" folder="/path/in.zip" keep_alive="false" />
+		<animation order="1" opacity="false" loops="0" folder="/path/loop.zip" keep_alive="true" />
+		<animation order="2" opacity="false" loops="1" folder="/path/out.zip" keep_alive="false" />
+	</effects>
+</playlist>
+
+<!-- Пример сложного ролла -->
+<template destroy="self">
+	<roll layer="53" direction="Left" cuda="false" stop_on_empty="true" render_on_prepare="true" >
+		<offset x="140" y="179" />
+		<show delay="135"/>
+		<effects>
+			<text layer="5" duration="141" opacity="false" in_dissolve="0" out_dissolve="0" width_max="880" render_fields="true">
+				<show delay="0"/>
+				<offset x="0" y="40" />
+				<keyframes>
+					<keyframe type="linear" frame="1" position="460" />
+					<keyframe type="bezier" frame="6" position="460" control_point_frame="6" control_point_position="630" />
+					<keyframe type="bezier" frame="16" position="735" control_point_frame="10" control_point_position="735" />
+					<keyframe type="linear" frame="131" position="735" />
+					<keyframe type="bezier" frame="132" position="735"  control_point_frame="137" control_point_position="735" />
+					<keyframe type="bezier" frame="141" position="640"  control_point_frame="141" control_point_position="700" />
+				</keyframes>
+				<font name="Pancetta Pro" size="59" style="2">
+					<color alpha="255" red="255" green="255" blue="255" />
+					<border width="0">
+						<color alpha="200" red="0" green="0" blue="0"  />
+					</border>
+				</font>
+				<value>TEXT1</value>
+			</text>
+			<text layer="5" duration="141" opacity="false" in_dissolve="0" out_dissolve="0" width_max="880" render_fields="true">
+				<show delay="0"/>
+				<offset x="0" y="102" />
+				<keyframes>
+					<keyframe type="linear" frame="1" position="400" />
+					<keyframe type="bezier" frame="6" position="400" control_point_frame="6" control_point_position="630" />
+					<keyframe type="bezier" frame="16" position="730" control_point_frame="10" control_point_position="730" />
+					<keyframe type="linear" frame="131" position="730" />
+					<keyframe type="bezier" frame="132" position="730"  control_point_frame="137" control_point_position="730" />
+					<keyframe type="bezier" frame="141" position="600"  control_point_frame="141" control_point_position="700" />
+				</keyframes>
+				<font name="Pancetta Pro" size="43" style="2">
+					<color alpha="255" red="0" green="0" blue="0" />
+					<border width="0">
+						<color alpha="200" red="0" green="0" blue="0"  />
+					</border>
+				</font>
+				<value>TEXT2</value>
+			</text>
+			<animation layer="3" opacity="false" folder="/path/mask_text.zip" keep_alive="false" turn_off_queue="true" mask_type="mask_all_upper" >		<!-- mask_all_upper_invert -->
+				<offset x="0" y="0" />
+				<keyframes>
+					<keyframe type="hold" frame="0" position="0" />
+				</keyframes>
+			</animation>
+			<animation layer="2" opacity="false" folder="/path/base.zip" keep_alive="false" turn_off_queue="true" container_size="true" >
+				<offset x="0" y="0" />
+				<keyframes>
+					<keyframe type="hold" frame="0" position="0" />
+				</keyframes>
+			</animation>
+			<video layer="1" opacity="false" file="/path/(artist__song__q1s0r0p0c0f0)(1080i25b1a0).mxf" start="100" duration="137" render_fields="false" crop_horizontal="20" crop_vertical="40" aspect_ratio="1.3" pb_mode="GivesFrameOnDemand" >
+				<channels />
+				<offset x="0" y="0" />
+				<size width="700" height="190" />
+				<show delay="4"/>
+				<keyframes>
+					<keyframe type="linear" frame="1" position="552" />
+					<keyframe type="linear" frame="2" position="341" />
+					<keyframe type="linear" frame="3" position="227" />
+					<keyframe type="linear" frame="4" position="156" />
+					<keyframe type="linear" frame="5" position="106" />
+					<keyframe type="linear" frame="6" position="71" />
+					<keyframe type="linear" frame="7" position="45" />
+					<keyframe type="linear" frame="8" position="27" />
+					<keyframe type="linear" frame="9" position="14" />
+					<keyframe type="linear" frame="10" position="5" />
+					<keyframe type="linear" frame="11" position="1" />
+					<keyframe type="linear" frame="12" position="0" />
+				</keyframes>
+				<mask>
+					<animation layer="1" opacity="false" folder="/path/mask_video.zip" keep_alive="false" turn_off_queue="true" mask_type="mask" >
+						<offset x="0" y="0" />
+					</animation>
+				</mask>
+			</video>
+		</effects>
+	</roll>
+</template>
+
+<!--Пример плагина (без содержания)-->
+	<plugin file="/path/comingup.dll" class="Comingup">
+		<data>
+			<!--здесь теги и эффекты, распознаваемые в префах плагина-->
+		</data>
+	</plugin>

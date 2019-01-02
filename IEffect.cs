@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text;
 using BTL.Play;
@@ -26,14 +26,15 @@ namespace BTL
         Composite,
 		Audio
     }
-    public interface IEffect
+    public interface IEffect : IEquatable<IEffect>
     {
-		event Effect.EventDelegate Prepared;
+        event Effect.EventDelegate Prepared;
 		event Effect.EventDelegate Started;
 		event Effect.EventDelegate Stopped;
         event Effect.EventDelegate Failed;
 
-		IContainer iContainer { get; set; }
+        int nID { get; }
+        IContainer iContainer { get; set; }
 		EffectType eType { get; }
 		EffectStatus eStatus { get; }
 		DateTime dtStatusChanged { get; }
@@ -44,13 +45,16 @@ namespace BTL
 		ulong nFrameCurrent { get; }
 		ulong nDuration { get; set; }
         object cTag { get; set; }
-		
-		void Prepare();
+        string sName { get; set; }
+
+        void Prepare();
         void Start();
         void Start(IContainer iContainer);
         void Stop();
         void Idle();
         void Fail();
         void Dispose();
-	}
+		void SimultaneousSet(ulong nSimultaneousID, ushort nSimultaneousTotalQty);
+        void SimultaneousReset();
+    }
 }
