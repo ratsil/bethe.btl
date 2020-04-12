@@ -75,7 +75,7 @@ namespace BTL
 		{
 			get
 			{
-				return _cInstance._tsNextFrameTimeout;
+				return _cInstance._tsPacketsBlockGettingTimeout;
 			}
 		}
 		static public bool bAudio
@@ -264,7 +264,7 @@ namespace BTL
 		private int _nFrameDuration;
 		private int _nGCFramesInterval;
 
-		private TimeSpan _tsNextFrameTimeout;
+		private TimeSpan _tsPacketsBlockGettingTimeout;
 		private bool _bAudio;
 		private uint _nAudioSamplesRate;
 		private byte _nAudioChannelsQty;
@@ -331,15 +331,18 @@ namespace BTL
             }
 
             cNodeChild = cNodeDevice.NodeGet("queue");
-            _nClockBiasInFrames = cNodeChild.AttributeGet<byte>("clock_bias");
-            //_nQueueBaetylusLength = cNodeChild.AttributeGet<byte>("btl");
-			_nQueueFfmpegLength = cNodeChild.AttributeGet<ushort>("ffmpeg");
-			_nQueueAnimationLength = cNodeChild.AttributeGet<byte>("animation");
-			_nQueuePacketsLength = cNodeChild.AttributeGet<long>("packets");  // bytes qty  200 000 000
-			_nDecodingThreads = cNodeChild.AttributeGet<byte>("threads");
-			_tsNextFrameTimeout = cNodeChild.AttributeGet<TimeSpan>("frame_timeout");
-            if (_tsNextFrameTimeout.TotalSeconds<=0)
-                (new Logger()).WriteWarning("btl.pref: [timeout<=0 " + _tsNextFrameTimeout.TotalSeconds + " s]");
+            _nClockBiasInFrames = cNodeChild.AttributeGet<byte>("clock_bias");  // time lag for clock effect in frames
+			_nQueueFfmpegLength = cNodeChild.AttributeGet<ushort>("ffmpeg");    // frames
+			_nQueueAnimationLength = cNodeChild.AttributeGet<byte>("animation");    // frames
+			_nQueuePacketsLength = cNodeChild.AttributeGet<long>("packets");    // bytes qty  200 000 000
+			_nDecodingThreads = cNodeChild.AttributeGet<byte>("threads");   // 4 by default. No need greater.
+            if (_nDecodingThreads < 4)
+                throw new Exception("'threads' attribute must be >=4");
+            //_tsNextFrameTimeout = cNodeChild.AttributeGet<TimeSpan>("frame_timeout");
+            _tsPacketsBlockGettingTimeout = cNodeChild.AttributeGet<TimeSpan>("get_block_timeout");   // packets block getting timeout. (20 sec for HD.mxf is ok if 'ffmpeg' >= 400fr and 'packets' = 200MB) (200MB=12sec; 400fr=16sec; 12/2+16=22 > 20)
+                                                                                                      // new block is started getting when 1/2 of previous block was run out.
+            if (_tsPacketsBlockGettingTimeout.TotalSeconds < 5)
+                throw new Exception("btl.pref: [get_block_timeout < 5 " + _tsPacketsBlockGettingTimeout.TotalSeconds + " s]");
             _nGCFramesInterval = cNodeChild.AttributeGet<int>("gc_interval");
 		}
 	}

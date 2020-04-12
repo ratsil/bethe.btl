@@ -204,7 +204,7 @@ namespace BTL.Play
                 return (this is IContainer);
             }
         }
-        public object oTag { get; set; } //хранилка дл¤ пользовательской ботвы. внутри BTL не set'ить!!!!
+        public object oTag { get; set; } //хранилка для пользовательской ботвы. внутри BTL не set'ить!!!!
         public string sName { get; set; }
         internal ulong nSimultaneousID
         {
@@ -305,7 +305,7 @@ namespace BTL.Play
         }
         virtual public void Prepare()
         {
-            //_iContainer = null; //EMERGENCY почему мы контейнер здесь обнул¤ем??  попробуем не обнул¤ть )))  х.з. почему... //ћожет, из-за повторного использовани¤ эффекта?
+            //_iContainer = null; //EMERGENCY почему мы контейнер здесь обнуляем??  попробуем не обнулять )))  х.з. почему... //Может, из-за повторного использования эффекта?
             switch (eStatus)
             {
                 case EffectStatus.Idle:

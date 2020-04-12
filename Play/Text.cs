@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 using System.Drawing;
@@ -267,7 +267,7 @@ namespace BTL.Play
 			// перебор средней одной строки
 			int nRealEnd = 0;
 			int nRealStart = bData.Width - 1;
-			int i = cBM.Height / 3;  // в этой строке 100% есть пиксели букв - экономим врем¤
+			int i = cBM.Height / 3;  // в этой строке 100% есть пиксели букв - экономим время
 			int j = 0;
 			for (byte* data = scan0 + i * bData.Stride + 3; j < nRealStart; data += 4)
 			{
@@ -326,7 +326,7 @@ namespace BTL.Play
 		{
 			StringFormat cStringFormat = new StringFormat(StringFormat.GenericTypographic);
 
-			Font cFont2 = new Font(_cFont.Name, _cFont.Size * 2, _cFont.Style);  // рисуем в 2 раза бќльшим шрифтом и уменьшаем - результат ахерительный! как в фотошопе!
+			Font cFont2 = new Font(_cFont.Name, _cFont.Size * 2, _cFont.Style);  // рисуем в 2 раза бОльшим шрифтом и уменьшаем - результат ахерительный! как в фотошопе!
 			Graphics cGraphics2 = Graphics.FromImage(new Bitmap(1, 1));
 			cGraphics2.PageUnit = GraphicsUnit.Pixel;
 			SizeF stSize2 = cGraphics2.MeasureString(_sText, cFont2, int.MaxValue, StringFormat.GenericTypographic);
@@ -385,7 +385,7 @@ namespace BTL.Play
                 return new Area(0, 0, (ushort)_cImage.Width, (ushort)_cImage.Height);
             }
 			int nWReal2 = cStartEndReal2.Height - cStartEndReal2.Width + 1;
-			int nWReal = (int)(nWReal2 / 2f + 0.5) + 1;  // +1 об¤зательно 
+			int nWReal = (int)(nWReal2 / 2f + 0.5) + 1;  // +1 обязательно 
 			int nLeftNew = -(int)(cStartEndReal2.Width / 2.0 - 0.5);
 			if (nWReal > _nWidthMax)
 				_cImage = new Bitmap((int)(_nWidthMax), (int)(stSize2.Height / 2 + 0.5), PixelFormat.Format32bppArgb);
@@ -542,7 +542,7 @@ namespace BTL.Play
         }
         public void Wrap(int nWidth)
 		{
-			// не реализовано, из-за удачного по¤влени¤ cWidthMax ;
+			// не реализовано, из-за удачного появления cWidthMax ;
 			//stArea = new Area(stArea.nLeft, stArea.nTop, stA.nWidth, stA.nHeight);
 			//Area stA = MeasureAndDraw();
 			//if (EffectStatus.Preparing == eStatus || EffectStatus.Running == eStatus)
@@ -550,7 +550,7 @@ namespace BTL.Play
 		}
 		static private Area Measure_old(string sText, Font cFont, double nBorderWidth)
 		{
-			if ((cFont.Style == FontStyle.Italic || cFont.Style == (FontStyle.Italic | FontStyle.Bold)) && sText.Length < 60)  // ¬–≈ћ≈ЌЌќ ////////////////  добавить tilt, shrink  (-0.1   0.8)
+			if ((cFont.Style == FontStyle.Italic || cFont.Style == (FontStyle.Italic | FontStyle.Bold)) && sText.Length < 60)  // ВРЕМЕННО ////////////////  добавить tilt, shrink  (-0.1   0.8)
 			{
 				Area stArea = Measure_old(sText, cFont, nBorderWidth, int.MaxValue);
 				return new Area(0, 0, (ushort)(stArea.nWidth * 0.9f + 1), (ushort)(stArea.nHeight - 1));
@@ -560,7 +560,7 @@ namespace BTL.Play
 		}
 		static private Area Measure_old(string sText, Font cFont, double nBorderWidth, int nWidthMaximum)
 		{
-			try    // ¬Ќ»ћјЌ»≈!  MeasureString  не учитывает последние пробелы!!   //  » не учитывает шрифт италик (наклонный)!!!! 
+			try    // ВНИМАНИЕ!  MeasureString  не учитывает последние пробелы!!   //  И не учитывает шрифт италик (наклонный)!!!! 
 			{
 				Graphics cGraphics = Graphics.FromImage(new Bitmap(1, 1));
 				//cGraphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;

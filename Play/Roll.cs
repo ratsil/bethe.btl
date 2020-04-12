@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Drawing.Drawing2D;
@@ -117,7 +117,7 @@ namespace BTL.Play
 			public float nPosition;
 			public long nFrame;
             public double nBesierControlPointCoeff;
-            public Point_FramesPixels cBesierControlPoint;  // безьер кейфрейм действует только в паре со вторым кейфреймом.  более 2х кейфреймов не отлажено!!  это точка в сторону которой начинает идти крива¤ (не проход¤ через неЄ)
+            public Point_FramesPixels cBesierControlPoint;  // безьер кейфрейм действует только в паре со вторым кейфреймом.  более 2х кейфреймов не отлажено!!  это точка в сторону которой начинает идти кривая (не проходя через неё)
             public Type eType;
             public Keyframe()
 			{
@@ -168,12 +168,12 @@ namespace BTL.Play
                 if (cKFTarget.nBesierControlPointCoeff < -1)
                     cKFTarget.nBesierControlPointCoeff = -1;
 
-                if (cKFTarget.nBesierControlPointCoeff >= 0)  // крива¤ "выт¤гиваетс¤" в сторону абсцисс, т.е. кадров, т.е. положение объекта будет медленно мен¤тьс¤ вблизи этой точки
+                if (cKFTarget.nBesierControlPointCoeff >= 0)  // кривая "вытягивается" в сторону абсцисс, т.е. кадров, т.е. положение объекта будет медленно меняться вблизи этой точки
                 {
                     cKFTarget.cBesierControlPoint.nFR = cKFTarget.nFrame + (cKFPair.nFrame - cKFTarget.nFrame) * cKFTarget.nBesierControlPointCoeff;
                     cKFTarget.cBesierControlPoint.nPX = cKFTarget.nPosition;
                 }
-                else // отрицательность условна - это положительный коэф, но крива¤ "выт¤гиваетс¤" в сторону ординат, т.е. пикселей, т.е. положение объекта будет быстро мен¤тьс¤ вблизи этой точки
+                else // отрицательность условна - это положительный коэф, но кривая "вытягивается" в сторону ординат, т.е. пикселей, т.е. положение объекта будет быстро меняться вблизи этой точки
                 {
                     cKFTarget.cBesierControlPoint.nFR = cKFTarget.nFrame;
                     cKFTarget.cBesierControlPoint.nPX = cKFTarget.nPosition + (cKFPair.nPosition - cKFTarget.nPosition) * (-1) * cKFTarget.nBesierControlPointCoeff;
@@ -205,10 +205,10 @@ namespace BTL.Play
 				if (1 == aInterval.Length)
 				{
 					if (aCurve[0] == aInterval[0])
-						; // в идеале расчитать экстрапол¤цию за границы диапазона (касательна¤ в ту же сторону)
+						; // в идеале расчитать экстраполяцию за границы диапазона (касательная в ту же сторону)
 					if (aCurve[aCurve.Length - 1] == aInterval[0])
-						; // в идеале расчитать экстрапол¤цию за границы диапазона (касательна¤ в ту же сторону)
-					return aInterval[0].nPosition; // но пока просто остаЄмс¤ на этой точке
+						; // в идеале расчитать экстраполяцию за границы диапазона (касательная в ту же сторону)
+					return aInterval[0].nPosition; // но пока просто остаёмся на этой точке
 				}
 
 				float nRetVal = 0;
@@ -219,7 +219,7 @@ namespace BTL.Play
 						nRetVal = aInterval[0].nPosition;
 						break;
 					case Keyframe.Type.linear:
-						// формула y=kx+h, где y-пиксели, x-фреймы. M, N - точки на х; A, B - точки на y, то люба¤ точка (PX, FR) <=  PX=((B-A)/(N-M))*(FR-M)+A
+						// формула y=kx+h, где y-пиксели, x-фреймы. M, N - точки на х; A, B - точки на y, то любая точка (PX, FR) <=  PX=((B-A)/(N-M))*(FR-M)+A
 						nRetVal = ((aInterval[1].nPosition - aInterval[0].nPosition) / (aInterval[1].nFrame - aInterval[0].nFrame)) * (nFrame - aInterval[0].nFrame) + aInterval[0].nPosition;
 						break;
 					case Keyframe.Type.bezier:
@@ -329,7 +329,7 @@ namespace BTL.Play
 						nBFromT = cEnd.nFR;
 					}
 				}
-				else  // сложный случай - перебор отрезков  (на 100 и выше кей-фреймах особенно чувствуетс¤ разница - где-то на 300 вызовов BezierFunction меньше или на 15-20% быстрее - 6ms против 8ms)
+				else  // сложный случай - перебор отрезков  (на 100 и выше кей-фреймах особенно чувствуется разница - где-то на 300 вызовов BezierFunction меньше или на 15-20% быстрее - 6ms против 8ms)
 				{
 					double nDiff;
 					nDiff = (cEnd.nT - cStart.nT) / (Math.Abs(cEnd.nFR - cStart.nFR) / 2);
@@ -462,7 +462,7 @@ namespace BTL.Play
 			public Keyframes cKeyframes;
 			public ulong nFrameStartInRoll;
 			public bool bEffectWasOnScreen;
-            public bool bNoOffScreen;  // не выкидываем по выходу за экран. нужно, если мы знаем, что он потом оп¤ть влетит и т.п.  уйдЄт по дюру в итоге
+            public bool bNoOffScreen;  // не выкидываем по выходу за экран. нужно, если мы знаем, что он потом опять влетит и т.п.  уйдёт по дюру в итоге
             public bool bWaitForEmptySpace;
             public bool bNotOccupyEmptySpace;
             public bool bRenderFields;
@@ -615,8 +615,8 @@ namespace BTL.Play
 			}
 		}
 		public bool bFullRenderOnPrepare { get; set; }
-		public bool bStopOnEmpty { get; set; }  //todo: надобы в контейнер это подн¤ть...  
-        public bool bStopOnEmptyQueue { get; set; } // если очередь байт 0 (не эффектов), то мы стопимс¤ (true), либо отдаЄм null (false)
+		public bool bStopOnEmpty { get; set; }  //todo: надобы в контейнер это поднять...  
+        public bool bStopOnEmptyQueue { get; set; } // если очередь байт 0 (не эффектов), то мы стопимся (true), либо отдаём null (false)
         public int nQueueSizeMax
         {
             get
@@ -860,7 +860,7 @@ namespace BTL.Play
 			iVideo.stBase = stArea;
 
 			if (iEffect.eStatus > EffectStatus.Idle && this.stMergingMethod != iVideo.stMergingMethod)
-				throw new Exception("некорректна¤ среда вычислений: [roll_cuda=" + stMergingMethod + "][effect_cuda=" + iVideo.stMergingMethod + "]"); //TODO LANG
+				throw new Exception("некорректная среда вычислений: [roll_cuda=" + stMergingMethod + "][effect_cuda=" + iVideo.stMergingMethod + "]"); //TODO LANG
 
 			iEffect.iContainer = this;
             iVideo.stMergingMethod = this.stMergingMethod;
@@ -879,9 +879,9 @@ namespace BTL.Play
 
             Keyframe.BezierPreCalculate(cKeyframes);
 
-            switch (eDirection)   // где ждать очереди или эффект-деле¤
+            switch (eDirection)   // где ждать очереди или эффект-делея
             {
-                case Direction.Static:   // всЄ-равно где, лишь бы за кадром
+                case Direction.Static:   // всё-равно где, лишь бы за кадром
                 case Direction.Right:
                     stEffectPosition.X = -stEffectArea.nWidth;
                     stEffectPosition.Y = 0;
@@ -902,7 +902,7 @@ namespace BTL.Play
 
             lock (_aEffects) // reorder effects
 			{
-				//if (null != (cItemTMP = _aEffects.FirstOrDefault(o => o.iVideo == iVideo)))     // теперь можно добавл¤ть один и тот же эффект более 1 раза
+				//if (null != (cItemTMP = _aEffects.FirstOrDefault(o => o.iVideo == iVideo)))     // теперь можно добавлять один и тот же эффект более 1 раза
 				//{
 				//	//_aEffects.Remove(cItemTMP);
 				//}
@@ -914,11 +914,11 @@ namespace BTL.Play
         private void AddEffectInRightOrder(Item cItem)
         {
             bool bFound = false;
-            for (int nI = 0; nI < _aEffects.Count; nI++)    // все маски с одним лаером - ниже не_масок с тем же лаером. пор¤док масок не важен.
+            for (int nI = 0; nI < _aEffects.Count; nI++)    // все маски с одним лаером - ниже не_масок с тем же лаером. порядок масок не важен.
             {
                 if (!bFound && (_aEffects[nI].cEffect.nLayer > cItem.cEffect.nLayer ||
-                                (cItem.cMask != null && _aEffects[nI].cEffect.nLayer == cItem.cEffect.nLayer)   // если нужно будет делать целевую маску, то она должа вставать над эффектом и т¤гатьс¤ в frNext, только если целевой эффект сработал, а потом PM вставить ниже эффекта... 
-                                ))                                                                              // целевых может быть несколько дл¤ каждого эффекта и они имеют кейфреймы и т.п.  пока обходимс¤...
+                                (cItem.cMask != null && _aEffects[nI].cEffect.nLayer == cItem.cEffect.nLayer)   // если нужно будет делать целевую маску, то она должа вставать над эффектом и тягаться в frNext, только если целевой эффект сработал, а потом PM вставить ниже эффекта... 
+                                ))                                                                              // целевых может быть несколько для каждого эффекта и они имеют кейфреймы и т.п.  пока обходимся...
                     bFound = true;
                 if (bFound)
                 {
@@ -937,8 +937,8 @@ namespace BTL.Play
         }
 
         #endregion
-        public void SetNotOccupyEmptySpace(IVideo iRecipient, bool bValue) // дл¤ фона в чате и т.п. чтобы не держали свободное место
-        {                               // пока сделано так, что те, кто не ждЄт - те и не держат  (bWaitForEmptySpace)  т.е. эта херь пока не работает
+        public void SetNotOccupyEmptySpace(IVideo iRecipient, bool bValue) // для фона в чате и т.п. чтобы не держали свободное место
+        {                               // пока сделано так, что те, кто не ждёт - те и не держат  (bWaitForEmptySpace)  т.е. эта херь пока не работает
             lock (_aEffects)
             {
                 Item cRecipient = _aEffects.FirstOrDefault(o => o.cEffect == iRecipient);
@@ -1345,7 +1345,7 @@ namespace BTL.Play
             
             if (null==_CompInfo)
 			    _CompInfo = new Microsoft.VisualBasic.Devices.ComputerInfo();
-            if (_CompInfo.AvailablePhysicalMemory > _nMaxBytesPrerender)  // 2 гига - Ќ« 
+            if (_CompInfo.AvailablePhysicalMemory > _nMaxBytesPrerender)  // 2 гига - НЗ 
             {
                 PixelsMap cPM = null;
                 Bytes aB = null;
@@ -1437,7 +1437,7 @@ namespace BTL.Play
                                 }
                             }
 
-                            _ahPreRender.Enqueue(aB);  // null можно добавл¤ть   «десь спим, но oSyncRoot свободен будет
+                            _ahPreRender.Enqueue(aB);  // null можно добавлять   Здесь спим, но oSyncRoot свободен будет
                         }
                     }
                     if (null == _cThreadFramesGettingWorker && aB != null)  // иначе за размером следит очередь - nQueueSize
@@ -1548,7 +1548,7 @@ namespace BTL.Play
 				(new Logger()).WriteNotice("dynamic queue started: [area=" + stArea + "]");
 				while (!_bDoAbortWorker)
 				{ 
-					PreRender(1); // здесь уснЄт если очередь >= nQueueSize
+					PreRender(1); // здесь уснёт если очередь >= nQueueSize
 					if (_nFrameCurrentPreRender >= nDuration || _bStoppedOnEmpty)
 						break;
 					System.Threading.Thread.Sleep(2);
@@ -1579,13 +1579,13 @@ namespace BTL.Play
                     if (_ahPreRender.nCount > 0) // есть пререндер или включена очередь
 					{
 						_aBytes = _ahPreRender.Dequeue();
-						if (null != _aBytes)  // а если нулл -  если хотели, чтобы ничего не было некоторое врем¤... (если это фича)
+						if (null != _aBytes)  // а если нулл -  если хотели, чтобы ничего не было некоторое время... (если это фича)
                         {
                             _cAdditionalPMDuo = ForContainerPMGet();
                             cRetVal = _cAdditionalPMDuo.Switch(nPixelsMapSyncIndex);
                             if (null == cRetVal) return null;
 
-                            cRetVal.CopyIn(_aBytes.aBytes); // этот копиин просто тер¤ет наши байты
+                            cRetVal.CopyIn(_aBytes.aBytes); // этот копиин просто теряет наши байты
                             if (!_aGotFrames.Contains(_aBytes))
                                 Baetylus._cBinM.BytesBack(_aBytes, 32);
                             cRetVal.nAlphaConstant = nCurrentOpacity;
@@ -1593,7 +1593,7 @@ namespace BTL.Play
                                 cRetVal.eAlpha = cMask.eMaskType;
                         }
                     }
-					else     // кончилась пререндерна¤ часть  или очередь черпанула, т.е. чату, например, просто нечего показывать
+					else     // кончилась пререндерная часть  или очередь черпанула, т.е. чату, например, просто нечего показывать
 					{
                         if (bStopOnEmptyQueue)  // что-то пошло не так
                         {
@@ -1604,11 +1604,11 @@ namespace BTL.Play
                         }
                         else // чат, например
                         {
-                            //(new Logger()).WriteDebug2("roll's queue is empty - returning null [area=" + stArea.nWidth + ", " + stArea.nHeight + "][bStopOnEmptyQueue=" + bStopOnEmptyQueue + "][_bStoppedOnEmpty=" + _bStoppedOnEmpty + "][frcurrent=" + nFrameCurrent + "][dur=" + nDuration + "][layer=" + nLayer + "]"); // на чате лупит всЄ врем¤
-                            //return null;  но надо внизу проверить услови¤ стопа
+                            //(new Logger()).WriteDebug2("roll's queue is empty - returning null [area=" + stArea.nWidth + ", " + stArea.nHeight + "][bStopOnEmptyQueue=" + bStopOnEmptyQueue + "][_bStoppedOnEmpty=" + _bStoppedOnEmpty + "][frcurrent=" + nFrameCurrent + "][dur=" + nDuration + "][layer=" + nLayer + "]"); // на чате лупит всё время
+                            //return null;  но надо внизу проверить условия стопа
                         }
 
-                        //                  if (bTurnOffDynamicQueue)    // был обычный пре-рендер    //  отключена пока, хот¤ и отлажена - не надЄжно. 
+                        //                  if (bTurnOffDynamicQueue)    // был обычный пре-рендер    //  отключена пока, хотя и отлажена - не надёжно. 
                         //{
                         //	if (!_bPreRenderPartIsOver)
                         //	{
@@ -1624,7 +1624,7 @@ namespace BTL.Play
                     }
                 }
 
-			// не надо элза     //  отключена пока, хот¤ и отлажена - не надЄжно. 
+			// не надо элза     //  отключена пока, хотя и отлажена - не надёжно. 
 			if (false        && _bPreRenderPartIsOver && !_bStoppedOnEmpty) // нету ни пререндера, ни очереди, но эффекты еще есть - можно продолжать брать кадры
 			{
                 lock (_aEffects)
@@ -1633,7 +1633,7 @@ namespace BTL.Play
                         return null;
                     cRetVal = _cPixelsMap = FrameNextPreRender(false);  // отдаст всегда __cPixelsMap (т.е. один из _cPMDuo), т.к. тут нет очереди (false)
 
-                    if (null != _cPixelsMap && stMergingMethod != iContainer?.stMergingMethod.Value && null != (_cAdditionalPMDuo = ForContainerPMGet()))  // разные куды у нас и родител¤
+                    if (null != _cPixelsMap && stMergingMethod != iContainer?.stMergingMethod.Value && null != (_cAdditionalPMDuo = ForContainerPMGet()))  // разные куды у нас и родителя
                     {
                         cRetVal = _cAdditionalPMDuo.Switch(nPixelsMapSyncIndex);  // фактически здесь _cPMDExternal === _cAdditionalPMDuo
                         if (null == cRetVal) return null;
@@ -1646,7 +1646,7 @@ namespace BTL.Play
                                 _cPixelsMap.CopyOut(aB.aBytes);
                                 cRetVal.CopyIn(aB.aBytes);
                                 Baetylus._cBinM.BytesBack(aB, 35);
-                                // TODO передать напр¤мую из устройства в устройство
+                                // TODO передать напрямую из устройства в устройство
                             }
                             else
                                 cRetVal.CopyIn(_cPixelsMap.BytesReferenceGet());
@@ -1663,7 +1663,7 @@ namespace BTL.Play
                     }
                 }
 			}
-			if (_bPreRenderPartIsOver && _bStoppedOnEmpty || nFrameCurrent >= nDuration)  // отдаст этот кадр последний (или null) и всЄ ... (и получаем регул¤рно pixelmap.id==0 error в baetylus :=) )
+			if (_bPreRenderPartIsOver && _bStoppedOnEmpty || nFrameCurrent >= nDuration)  // отдаст этот кадр последний (или null) и всё ... (и получаем регулярно pixelmap.id==0 error в baetylus :=) )
 				Stop();
 
 			return cRetVal;
@@ -1684,7 +1684,7 @@ namespace BTL.Play
 
             _nPreviousPMIndex = _nCurrentPMIndex;
 
-            if (bRenderForQueue) // не важна стыковка с кудой Ѕ“Ћ, но важно, чтобы был наш пор¤док (а не 255, что приведЄт-таки к стыковке и к дЄрганию 0,0,1,1,1,2,2,0 и т.п.)
+            if (bRenderForQueue) // не важна стыковка с кудой БТЛ, но важно, чтобы был наш порядок (а не 255, что приведёт-таки к стыковке и к дёрганию 0,0,1,1,1,2,2,0 и т.п.)
             {
                 if (stMergingMethod.eDeviceType == MergingDevice.CUDA)
                 {
@@ -1696,11 +1696,11 @@ namespace BTL.Play
                 else
                     _nCurrentPMIndex = byte.MaxValue;
             }
-            else // даЄм кадр в синхроне с внешним контейнером
+            else // даём кадр в синхроне с внешним контейнером
             {
                 if (stMergingMethod.eDeviceType == MergingDevice.CUDA)  // и у нас куда 
                 {
-                    if (nPixelsMapSyncIndex < byte.MaxValue)   // и контейнер нам нав¤зал номер триплы (а значит он тоже CUDA)
+                    if (nPixelsMapSyncIndex < byte.MaxValue)   // и контейнер нам навязал номер триплы (а значит он тоже CUDA)
                         _nCurrentPMIndex = nPixelsMapSyncIndex;
                     else
                     {
@@ -1767,7 +1767,7 @@ namespace BTL.Play
 					if (EffectStatus.Preparing == _cFrNextItem.iEffect.eStatus)
 						_cFrNextItem.iEffect.Start(null);
                     if (EffectStatus.Running != _cFrNextItem.iEffect.eStatus)
-                        throw new Exception("Ёффект не может быть не Prepare и не Running в ROLL.FrameNext() [layer=" + _cFrNextItem.cEffect.nLayer + "]");
+                        throw new Exception("Эффект не может быть не Prepare и не Running в ROLL.FrameNext() [layer=" + _cFrNextItem.cEffect.nLayer + "]");
 
                     _iFrNextVideo = _cFrNextItem.iVideo;
                     if (!_ahEffect_PM.ContainsKey(_iFrNextVideo))
@@ -1775,7 +1775,7 @@ namespace BTL.Play
                         _iFrNextVideo.nPixelsMapSyncIndex = _nCurrentPMIndex;
                         _ahEffect_PM.Add(_iFrNextVideo, _iFrNextVideo.FrameNext());
                     }
-                    _cFrNextPM = _ahEffect_PM[_iFrNextVideo];  // дл¤ оптимизации можно юзать один эффект и дл¤ плашки и дл¤ маски и т.п. а FrNext дЄргаем один раз на кадр
+                    _cFrNextPM = _ahEffect_PM[_iFrNextVideo];  // для оптимизации можно юзать один эффект и для плашки и для маски и т.п. а FrNext дёргаем один раз на кадр
                     if (null == _cFrNextPM)
 					{
 						(new Logger()).WriteNotice("Got a null pixelsmap from Effect.FrameNext() in roll [layer=" + _cFrNextItem.cEffect.nLayer + "]");
@@ -1792,7 +1792,7 @@ namespace BTL.Play
 					_cOffsetAbs = !_cFrNextItem.bRenderFields || _cFrNextItem.stPosition.X == _cFrNextItem.stPositionPrevious.X ? null : ((IVideo)_cFrNextItem.cEffect).OffsetAbsoluteGet();
 					_cFrNextPM.Shift(_cFrNextItem.stPosition, _cOffsetAbs, _cFrNextItem.stPositionPrevious);
 
-                    if (null != _iFrNextVideo.iMask && ((IEffect)_iFrNextVideo.iMask).eStatus != EffectStatus.Stopped) // если маска одна и та же на разных сло¤х, то дЄргать надо только один раз на кадр!
+                    if (null != _iFrNextVideo.iMask && ((IEffect)_iFrNextVideo.iMask).eStatus != EffectStatus.Stopped) // если маска одна и та же на разных слоях, то дёргать надо только один раз на кадр!
 					{
                         if (!_ahEffect_PM.ContainsKey(_iFrNextVideo.iMask))
                         {
@@ -1828,7 +1828,7 @@ namespace BTL.Play
             //(new Logger()).WriteNotice("         ======TIMING: roll: complited while: ms=" + cSW_while.Elapsed.TotalMilliseconds);
 
             if (_aEffects.Count <= 0 && bStopOnEmpty)
-                _bStoppedOnEmpty = true;  // дл¤ очереди инфа на стоп
+                _bStoppedOnEmpty = true;  // для очереди инфа на стоп
 
             if (0 < _aFrNextPMs.Count)
             {
@@ -1849,8 +1849,8 @@ namespace BTL.Play
         }
         private PixelsMap.Triple ForContainerPMGet()  // returns pm for parent usage; __cPixelsMap - our internal roll pm
         {
-            if (true || _cPMDuo.cFirst.stMergingMethod != iContainer.stMergingMethod.Value)  //!__cPixelsMap.bCUDA && iContainer.bCUDA.Value     // куда родител¤ != куде рола  // куда теперь - это ћћ
-            {// всегда берЄм еще PM, если сюда обратились, значит надо
+            if (true || _cPMDuo.cFirst.stMergingMethod != iContainer.stMergingMethod.Value)  //!__cPixelsMap.bCUDA && iContainer.bCUDA.Value     // куда родителя != куде рола  // куда теперь - это ММ
+            {// всегда берём еще PM, если сюда обратились, значит надо
                 if (null != _cAdditionalPMDuo && stArea != _cAdditionalPMDuo.cFirst.stArea)
                 {
                     Baetylus.PixelsMapDispose(_cAdditionalPMDuo, true);
